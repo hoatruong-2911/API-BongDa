@@ -2,131 +2,103 @@
 
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Route;
+use App\Http\Controllers\Api\{
+    AuthController,
+    FieldController,
+    BookingController,
+    ProductController,
+    OrderController,
+    StaffController,
+    ShiftController,
+    AttendanceController,
+    DashboardController,
+    UserController
+};
 
-// Import Controllers
-use App\Http\Controllers\Api\AuthController;
-use App\Http\Controllers\Api\FieldController;
-use App\Http\Controllers\Api\BookingController;
-use App\Http\Controllers\Api\ProductController;
-use App\Http\Controllers\Api\OrderController;
-use App\Http\Controllers\Api\StaffController;
-use App\Http\Controllers\Api\ShiftController;
-use App\Http\Controllers\Api\AttendanceController;
-use App\Http\Controllers\Api\DashboardController;
-use App\Http\Controllers\Api\UserController;
 
-/*
-|--------------------------------------------------------------------------
-| 1. AUTHENTICATION (CÔNG KHAI)
-|--------------------------------------------------------------------------
-| Các route công khai, không cần Sanctum.
-*/
 
-// Route::post('login', [AuthController::class, 'login']);
-// Route::post('register', [AuthController::class, 'register']);
-// routes/api.php
+//------------------------------------------------------
+
+/* --- 1. PUBLIC ROUTES --- */
+
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::post('register', [AuthController::class, 'register']);
 });
 
-// ⬅️ THÊM CÁC ROUTE PRODUCT CÔNG KHAI TẠI ĐÂY
 Route::get('products', [ProductController::class, 'index']);
 Route::get('products/{product}', [ProductController::class, 'show']);
 
-/*
-|--------------------------------------------------------------------------
-| 2. PROTECTED ROUTES (Cần Sanctum Auth)
-|--------------------------------------------------------------------------
-| Tất cả các route bên trong nhóm này yêu cầu người dùng phải đăng nhập
-| và có token hợp lệ.
-*/
+//------------------------------------------------------
+
+/* --- 2. PROTECTED ROUTES (Yêu cầu Đăng nhập) --- */
 Route::middleware('auth:sanctum')->group(function () {
 
-    // Auth
+    // Thông tin cá nhân
     Route::post('auth/logout', [AuthController::class, 'logout']);
     Route::get('auth/me', [AuthController::class, 'me']);
-    
-    Route::put('auth/user', [UserController::class, 'update']);
+    Route::post('auth/user', [UserController::class, 'updateProfile']); // User tự cập nhật profile
+    Route::post('/auth/change-password', [UserController::class, 'changePassword']);
 
+    //------------------------------------------------------
 
-    /*
-    |----------------------------------------------------------------------
-    | 2.1. CUSTOMER ROUTES (Khách hàng & Cấp cao hơn)
-    |----------------------------------------------------------------------
-    | Cho phép vai trò 'customer', 'staff', 'admin'
-    */
+    /* --- 2.1. CUSTOMER & ABOVE (Customer, Staff, Admin) --- */
     Route::middleware('role:customer,staff,admin')->group(function () {
-
-        // Quản lý Sân (Field): Xem danh sách (Tất cả vai trò)
         Route::get('fields', [FieldController::class, 'index']);
         Route::get('fields/{field}', [FieldController::class, 'show']);
-
         Route::get('fields/{field}/schedule', [FieldController::class, 'getSchedule']);
 
-        // Đặt Sân (Booking): Khách hàng có thể tạo booking, xem booking của mình
+        // Booking cơ bản
         Route::apiResource('bookings', BookingController::class)->only(['index', 'store', 'show']);
-
-        // Đơn Hàng (Order): Tạo đơn hàng (Bán hàng tại sân)
         Route::apiResource('orders', OrderController::class)->only(['store']);
-
-        // Sản phẩm (Product): Xem danh sách sản phẩm (để bán kèm)
-        // Route::get('products', [ProductController::class, 'index']);
-        // Route::get('products/{product}', [ProductController::class, 'show']);
     });
 
 
-    /*
-    |----------------------------------------------------------------------
-    | 2.2. STAFF ROUTES (Nhân viên & Cấp cao hơn)
-    |----------------------------------------------------------------------
-    | Chỉ cho phép vai trò 'staff' và 'admin'
-    */
-    Route::middleware('role:staff,admin')->group(function () {
+    //------------------------------------------------------
 
-        // Booking: Staff có thể duyệt hoặc hủy bỏ booking của người khác
-        Route::put('bookings/{booking}/update-status', [BookingController::class, 'updateStatus']); // Tự tạo
+    /* --- 2.2. STAFF & ABOVE (Staff, Admin) --- */
+    Route::middleware('role:staff,admin')->group(function () {
+        // Quản lý Booking nâng cao
+        Route::patch('bookings/{booking}/status', [BookingController::class, 'changeStatus']);
         Route::apiResource('bookings', BookingController::class)->only(['update', 'destroy']);
 
-
-        // Orders: Staff có thể quản lý trạng thái đơn hàng
-        Route::put('orders/{order}/update-status', [OrderController::class, 'updateStatus']); // Tự tạo
+        // Quản lý Order
+        Route::put('orders/{order}/update-status', [OrderController::class, 'updateStatus']);
         Route::apiResource('orders', OrderController::class)->only(['index', 'show', 'update', 'destroy']);
 
-
-        // Chấm Công (Attendance): Staff có thể tự chấm công
+        // Chấm công
         Route::post('attendance/check-in', [AttendanceController::class, 'checkIn']);
         Route::post('attendance/check-out', [AttendanceController::class, 'checkOut']);
     });
 
+    //------------------------------------------------------
 
-    /*
-    |----------------------------------------------------------------------
-    | 2.3. ADMIN ROUTES (Chỉ Admin)
-    |----------------------------------------------------------------------
-    | Chỉ cho phép vai trò 'admin'
-    */
-    Route::middleware('role:admin')->group(function () {
+    /* --- 2.3. ADMIN ONLY --- */
+    Route::middleware('role:admin,staff')->group(function () {
+        // Quản lý User (Admin quản lý tài khoản người khác)
+        // URL: /api/admin/users
+        Route::prefix('admin')->group(function () {
+            Route::get('users', [UserController::class, 'index']);
+            Route::post('users/register', [UserController::class, 'store']); // Tạo mới tài khoản
+            Route::put('users/{id}', [UserController::class, 'update']); // Sửa theo ID truyền vào
+            Route::get('users/{id}', [UserController::class, 'show']); //(Để lấy dữ liệu sửa)
+            Route::delete('users/{user}', [UserController::class, 'destroy']);
 
-        // Dashboard: Admin có quyền xem Dashboard tổng quan
-        Route::get('dashboard/summary', [DashboardController::class, 'summary']); // Tự tạo
+            Route::patch('users/{id}/status', [UserController::class, 'toggleStatus']); //(Để lấy dữ liệu sửa)
 
 
-        // Quản lý Sân (Field)
+        });
+
+        Route::get('dashboard/summary', [DashboardController::class, 'summary']);
+
+        // Quản lý Sân & Sản phẩm (CUD)
         Route::apiResource('fields', FieldController::class)->except(['index', 'show']);
-
-        // Quản lý Sản phẩm (Product)
         Route::apiResource('products', ProductController::class)->except(['index', 'show']);
 
-
-        // Quản lý Nhân sự (Staff - CUD)
+        // Quản lý Nhân sự
         Route::apiResource('staff', StaffController::class);
-
-        // Quản lý Ca làm việc (Shift)
         Route::apiResource('shifts', ShiftController::class);
-
-        // Quản lý Chấm công (Attendance - Tổng quan)
-        Route::get('attendance', [AttendanceController::class, 'index']); // Xem tất cả
-        Route::delete('attendance/{attendance}', [AttendanceController::class, 'destroy']); // Xóa chấm công
+        Route::get('attendance', [AttendanceController::class, 'index']);
+        Route::delete('attendance/{attendance}', [AttendanceController::class, 'destroy']);
     });
 });

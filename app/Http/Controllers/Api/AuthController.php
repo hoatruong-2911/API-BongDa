@@ -55,18 +55,19 @@ class AuthController extends Controller
     /**
      * Xử lý Đăng nhập (Sử dụng Form Request).
      */
+    /**
+     * Xử lý Đăng nhập
+     */
     public function login(LoginRequest $request): JsonResponse
     {
-        // ... (logic Auth::attempt)
+        // 1. Kiểm tra email/password cơ bản
         if (! Auth::attempt($request->only('email', 'password'))) {
             throw ValidationException::withMessages([
                 'email' => ['Thông tin đăng nhập không hợp lệ.'],
             ])->status(401);
         }
 
-        // ⬅️ THAY THẾ TOÀN BỘ LOGIC DƯỚI ĐÂY
-
-        // 1. Tìm User Model MỚI từ DB (đảm bảo nó là Model có đủ Trait)
+        // 2. Tìm User Model để lấy dữ liệu (Phải làm bước này trước khi kiểm tra is_active)
         $user = User::where('email', $request->email)->first();
 
         if (!$user) {
@@ -75,12 +76,21 @@ class AuthController extends Controller
             ])->status(401);
         }
 
-        // 2. Chạy các phương thức Sanctum và Eloquent trên đối tượng $user mới
-        $user->tokens()->delete(); // ⬅️ Lỗi này sẽ được khắc phục
+        // 3. KIỂM TRA TRẠNG THÁI KHÓA (Logic mới của bạn)
+        if (!$user->is_active) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Tài khoản của bạn đã bị khóa. Vui lòng liên hệ Admin.'
+            ], 403);
+        }
 
-        $token = $user->createToken('auth_token', [$user->role])->plainTextToken; // ⬅️ Lỗi này sẽ được khắc phục
+        // 4. Xử lý Token và Profile
+        $user->tokens()->delete(); // Xóa các phiên đăng nhập cũ (Single Device Login)
 
-        $user->load('profile'); // ⬅️ Lỗi này sẽ được khắc phục
+        // Tạo token mới, gán kèm Role vào Ability của Sanctum
+        $token = $user->createToken('auth_token', [$user->role])->plainTextToken;
+
+        $user->load('profile');
 
         return response()->json([
             'success' => true,

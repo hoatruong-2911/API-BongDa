@@ -246,4 +246,40 @@ class BookingController extends Controller
             return response()->json(['success' => false, 'message' => 'Lỗi: ' . $e->getMessage()], 500);
         }
     }
+
+
+    /**
+     * Chuyển đổi trạng thái nhanh từ trang danh sách hoặc chi tiết.
+     */
+    public function changeStatus(Request $request, Booking $booking): JsonResponse
+    {
+        $newStatus = $request->status;
+        $user = $request->user(); // Lấy người đang đăng nhập
+
+        // Logic tự động điền Audit Log
+        $updateData = ['status' => $newStatus];
+
+        if ($newStatus === 'approved') {
+            $updateData['approved_by'] = $user->id;
+            $updateData['approved_at'] = now();
+        }
+
+        if ($newStatus === 'playing' || $newStatus === 'completed') {
+            $updateData['confirmed_by'] = $user->id;
+            if ($newStatus === 'completed') {
+                $updateData['confirmed_at'] = now();
+            }
+        }
+
+        try {
+            $booking->update($updateData);
+            return response()->json([
+                'success' => true,
+                'message' => "Đã chuyển trạng thái sang: " . strtoupper($newStatus),
+                'data' => $booking
+            ]);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
 }
