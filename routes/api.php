@@ -12,10 +12,11 @@ use App\Http\Controllers\Api\{
     ShiftController,
     AttendanceController,
     DashboardController,
-    UserController
+    UserController,
+    BrandController,
+    CategoryController
 };
-
-
+use App\Models\Category;
 
 //------------------------------------------------------
 
@@ -83,9 +84,30 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::put('users/{id}', [UserController::class, 'update']); // Sửa theo ID truyền vào
             Route::get('users/{id}', [UserController::class, 'show']); //(Để lấy dữ liệu sửa)
             Route::delete('users/{user}', [UserController::class, 'destroy']);
-
             Route::patch('users/{id}/status', [UserController::class, 'toggleStatus']); //(Để lấy dữ liệu sửa)
 
+            // --- QUẢN LÝ BRAND (Thương hiệu) ---
+            // Sử dụng apiResource sẽ tự tạo: index, store, show, update, destroy
+            Route::apiResource('brands', BrandController::class);
+            Route::post('brands/add', [BrandController::class, 'store']); // Tạo mới 
+            Route::get('brands/{id}', [BrandController::class, 'show']); //(Để lấy dữ liệu )
+            Route::patch('brands/{id}/toggle-status', [BrandController::class, 'toggleStatus']); //(Để lấy dữ liệu sửa)
+
+
+
+
+            // --- QUẢN LÝ CATEGORY (Danh mục) ---
+            Route::apiResource('categories', CategoryController::class);
+            Route::post('categories/add', [CategoryController::class, 'store']); // Tạo mới 
+            Route::get('categories/{id}', [CategoryController::class, 'show']); //(Để lấy dữ liệu )
+            Route::patch('categories/{id}/toggle-status', [CategoryController::class, 'toggleStatus']); //(Để lấy dữ liệu sửa)
+
+            // --- QUẢN LÝ Product (Danh mục) ---
+            Route::apiResource('products', ProductController::class);
+            Route::post('products/add', [ProductController::class, 'store']); // Tạo mới
+            Route::get('products/{id}', [ProductController::class, 'show']); //(Để lấy dữ liệu )
+            Route::patch('products/{id}/toggle-status', [ProductController::class, 'toggleStatus']);
+            
 
         });
 

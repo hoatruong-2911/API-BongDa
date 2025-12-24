@@ -13,17 +13,18 @@ return new class extends Migration
     {
         Schema::create('products', function (Blueprint $table) {
             $table->id();
-
             $table->string('name');
-            // THÊM: Loại sản phẩm (ENUM)
-            $table->enum('category', ['food', 'drink', 'apparel', 'accessories']);
-            $table->decimal('price', 10, 2);
+
+            // BỎ enum cũ, THÊM 2 cột khóa ngoại mới
+            $table->foreignId('category_id')->nullable()->constrained('categories')->onDelete('set null');
+            $table->foreignId('brand_id')->nullable()->constrained('brands')->onDelete('set null');
+
+            $table->decimal('price', 12, 2);
             $table->string('image')->nullable();
             $table->text('description')->nullable();
-            $table->integer('stock')->default(0);      // Số lượng tồn kho
-            $table->string('unit', 50)->default('cái'); // Đơn vị tính
-            $table->boolean('available')->default(true); // Trạng thái sẵn sàng bán
-
+            $table->integer('stock')->default(0);
+            $table->string('unit', 50)->default('cái');
+            $table->boolean('available')->default(true);
             $table->timestamps();
         });
     }

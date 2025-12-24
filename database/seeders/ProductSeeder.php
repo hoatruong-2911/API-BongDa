@@ -2,193 +2,174 @@
 
 namespace Database\Seeders;
 
-use Illuminate\Support\Facades\DB;use Illuminate\Database\Console\Seeds\WithoutModelEvents;
+use Illuminate\Support\Facades\DB;
 use Illuminate\Database\Seeder;
 
 class ProductSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
+        // Xóa dữ liệu cũ để tránh trùng lặp khi chạy lại lệnh
+        DB::table('products')->truncate();
+
         DB::table('products')->insert([
+            // --- GIÀY ĐÁ BÓNG (Category 1) ---
             [
-                'name' => 'Áo đấu Manchester United',
-                'category' => 'apparel',
-                'price' => 250000.00,
-                'stock' => 20,
-                'unit' => 'cái',
-                'available' => true,
-                'description' => 'Áo đấu CLB Manchester United chính hãng',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Áo đấu Real Madrid',
-                'category' => 'apparel',
-                'price' => 250000.00,
-                'stock' => 18,
-                'unit' => 'cái',
-                'available' => true,
-                'description' => 'Áo đấu CLB Real Madrid chính hãng',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Quần đùi thể thao',
-                'category' => 'apparel',
-                'price' => 120000.00,
-                'stock' => 40,
-                'unit' => 'cái',
-                'available' => true,
-                'description' => 'Quần đùi thể thao cao cấp',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Tất đá bóng Nike',
-                'category' => 'apparel',
-                'price' => 45000.00,
-                'stock' => 60,
+                'name' => 'Nike Mercurial Vapor 15',
+                'category_id' => 1,
+                'brand_id' => 1,
+                'price' => 1250000,
+                'stock' => 10,
                 'unit' => 'đôi',
                 'available' => true,
-                'description' => 'Tất đá bóng Nike chống trượt',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            
-            // --- Đồ Uống (Drink) ---
-            [
-                'name' => 'Aquafina',
-                'category' => 'drink',
-                'price' => 8000.00,
-                'stock' => 100,
-                'unit' => 'chai',
-                'available' => true,
-                'description' => 'Nước suối tinh khiết',
+                'description' => 'Giày đá bóng cỏ nhân tạo cao cấp',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
             [
-                'name' => 'Coca Cola',
-                'category' => 'drink',
-                'price' => 15000.00,
-                'stock' => 120,
-                'unit' => 'chai',
+                'name' => 'Adidas Predator Accuracy',
+                'category_id' => 1,
+                'brand_id' => 2,
+                'price' => 1100000,
+                'stock' => 8,
+                'unit' => 'đôi',
                 'available' => true,
-                'description' => 'Nước ngọt có ga Coca Cola',
+                'description' => 'Kiểm soát bóng tối ưu',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
             [
-                'name' => 'Nước tăng lực Red Bull',
-                'category' => 'drink',
-                'price' => 18000.00,
-                'stock' => 90,
-                'unit' => 'lon',
+                'name' => 'Mizuno Morelia Neo III',
+                'category_id' => 1,
+                'brand_id' => 4,
+                'price' => 1550000,
+                'stock' => 5,
+                'unit' => 'đôi',
                 'available' => true,
-                'description' => 'Nước tăng lực Red Bull',
+                'description' => 'Giày da thật siêu nhẹ từ Nhật Bản',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
             [
-                'name' => 'Pepsi',
-                'category' => 'drink',
-                'price' => 15000.00,
-                'stock' => 100,
-                'unit' => 'chai',
+                'name' => 'Kamito Velocidad 3',
+                'category_id' => 1,
+                'brand_id' => 5,
+                'price' => 650000,
+                'stock' => 20,
+                'unit' => 'đôi',
                 'available' => true,
-                'description' => 'Nước ngọt có ga Pepsi',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Sting dâu',
-                'category' => 'drink',
-                'price' => 12000.00,
-                'stock' => 110,
-                'unit' => 'chai',
-                'available' => true,
-                'description' => 'Nước tăng lực vị dâu',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            
-            // --- Đồ Ăn (Food) ---
-            [
-                'name' => 'Bánh mì thịt nướng',
-                'category' => 'food',
-                'price' => 25000.00,
-                'stock' => 50,
-                'unit' => 'cái',
-                'available' => true,
-                'description' => 'Bánh mì thịt nướng thơm ngon',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Mì tôm trứng',
-                'category' => 'food',
-                'price' => 20000.00,
-                'stock' => 30,
-                'unit' => 'tô',
-                'available' => true,
-                'description' => 'Mì tôm trứng nóng hổi',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Snack khoai tây',
-                'category' => 'food',
-                'price' => 10000.00,
-                'stock' => 80,
-                'unit' => 'gói',
-                'available' => true,
-                'description' => 'Snack khoai tây giòn tan',
-                'created_at' => now(),
-                'updated_at' => now()
-            ],
-            [
-                'name' => 'Xúc xích nướng',
-                'category' => 'food',
-                'price' => 15000.00,
-                'stock' => 100,
-                'unit' => 'cái',
-                'available' => true,
-                'description' => 'Xúc xích nướng than hoa',
+                'description' => 'Giày bóng đá thuần Việt',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
 
-            // --- Phụ kiện (Accessories) ---
+            // --- ÁO ĐẤU (Category 2) ---
             [
-                'name' => 'Bảo vệ ống đồng',
-                'category' => 'accessories',
-                'price' => 65000.00,
+                'name' => 'Áo MU Sân Nhà 2024',
+                'category_id' => 2,
+                'brand_id' => 2,
+                'price' => 150000,
+                'stock' => 50,
+                'unit' => 'cái',
+                'available' => true,
+                'description' => 'Áo thun lạnh thấm hút mồ hôi',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Áo Real Madrid 2024',
+                'category_id' => 2,
+                'brand_id' => 2,
+                'price' => 150000,
                 'stock' => 45,
-                'unit' => 'đôi',
+                'unit' => 'cái',
                 'available' => true,
-                'description' => 'Bảo vệ ống đồng chống chấn thương',
+                'description' => 'Phiên bản Player chuẩn form',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
             [
-                'name' => 'Bóng đá Nike',
-                'category' => 'accessories',
-                'price' => 350000.00,
+                'name' => 'Áo Tuyển Việt Nam Kamito',
+                'category_id' => 2,
+                'brand_id' => 5,
+                'price' => 350000,
                 'stock' => 30,
-                'unit' => 'quả',
+                'unit' => 'cái',
                 'available' => true,
-                'description' => 'Bóng đá Nike Premier League',
+                'description' => 'Hàng chính hãng Kamito',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+
+            // --- NƯỚC GIẢI KHÁT & TĂNG LỰC (Category 3 & 4) ---
+            [
+                'name' => 'Coca Cola 330ml',
+                'category_id' => 3,
+                'brand_id' => 6,
+                'price' => 15000,
+                'stock' => 100,
+                'unit' => 'lon',
+                'available' => true,
+                'description' => 'Nước ngọt giải khát có ga',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
             [
-                'name' => 'Găng tay thủ môn',
-                'category' => 'accessories',
-                'price' => 180000.00,
-                'stock' => 25,
+                'name' => 'Pepsi Vị Chanh',
+                'category_id' => 3,
+                'brand_id' => 7,
+                'price' => 15000,
+                'stock' => 80,
+                'unit' => 'lon',
+                'available' => true,
+                'description' => 'Không calo, vị chanh sảng khoái',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Red Bull Thái',
+                'category_id' => 4,
+                'brand_id' => 8,
+                'price' => 20000,
+                'stock' => 60,
+                'unit' => 'lon',
+                'available' => true,
+                'description' => 'Tăng cường năng lượng tức thì',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Nước Suối Aquafina 500ml',
+                'category_id' => 3,
+                'brand_id' => 9,
+                'price' => 10000,
+                'stock' => 200,
+                'unit' => 'chai',
+                'available' => true,
+                'description' => 'Nước tinh khiết',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Revive Chanh Muối',
+                'category_id' => 3,
+                'brand_id' => 10,
+                'price' => 12000,
+                'stock' => 150,
+                'unit' => 'chai',
+                'available' => true,
+                'description' => 'Bù khoáng và điện giải',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+
+            // --- PHỤ KIỆN (Category 6, 7, 8...) ---
+            [
+                'name' => 'Găng tay Adidas Predator Pro',
+                'category_id' => 6,
+                'brand_id' => 2,
+                'price' => 850000,
+                'stock' => 12,
                 'unit' => 'đôi',
                 'available' => true,
                 'description' => 'Găng tay thủ môn chuyên nghiệp',
@@ -196,24 +177,86 @@ class ProductSeeder extends Seeder
                 'updated_at' => now()
             ],
             [
-                'name' => 'Giày đá bóng Adidas Predator',
-                'category' => 'accessories',
-                'price' => 850000.00,
-                'stock' => 15,
+                'name' => 'Tất chống trượt Nike',
+                'category_id' => 7,
+                'brand_id' => 1,
+                'price' => 45000,
+                'stock' => 100,
                 'unit' => 'đôi',
                 'available' => true,
-                'description' => 'Giày đá bóng Adidas Predator',
+                'description' => 'Hỗ trợ bám giày cực tốt',
                 'created_at' => now(),
                 'updated_at' => now()
             ],
             [
-                'name' => 'Giày đá bóng Nike Mercurial',
-                'category' => 'accessories',
-                'price' => 920000.00,
-                'stock' => 12,
-                'unit' => 'đôi',
+                'name' => 'Quả bóng Mitre 1811',
+                'category_id' => 8,
+                'brand_id' => 12,
+                'price' => 450000,
+                'stock' => 15,
+                'unit' => 'quả',
                 'available' => true,
-                'description' => 'Giày đá bóng Nike Mercurial',
+                'description' => 'Bóng thi đấu sân 7',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Quả bóng Molten Vantaggio',
+                'category_id' => 8,
+                'brand_id' => 13,
+                'price' => 550000,
+                'stock' => 10,
+                'unit' => 'quả',
+                'available' => true,
+                'description' => 'Bóng đạt tiêu chuẩn FIFA',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Băng cuốn cổ chân Zocker',
+                'category_id' => 9,
+                'brand_id' => 15,
+                'price' => 25000,
+                'stock' => 200,
+                'unit' => 'cuộn',
+                'available' => true,
+                'description' => 'Hỗ trợ bảo vệ dây chằng',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Túi đựng giày Grand Sport',
+                'category_id' => 10,
+                'brand_id' => 11,
+                'price' => 120000,
+                'stock' => 25,
+                'unit' => 'cái',
+                'available' => true,
+                'description' => 'Chất liệu chống thấm nước',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Bình nước thể thao Puma',
+                'category_id' => 12,
+                'brand_id' => 3,
+                'price' => 180000,
+                'stock' => 20,
+                'unit' => 'cái',
+                'available' => true,
+                'description' => 'Bình nhựa BPA free cao cấp',
+                'created_at' => now(),
+                'updated_at' => now()
+            ],
+            [
+                'name' => 'Áo khoác gió Nike Academy',
+                'category_id' => 13,
+                'brand_id' => 1,
+                'price' => 650000,
+                'stock' => 15,
+                'unit' => 'cái',
+                'available' => true,
+                'description' => 'Chống mưa nhẹ, giữ ấm khi khởi động',
                 'created_at' => now(),
                 'updated_at' => now()
             ],

@@ -6,6 +6,7 @@ use App\Models\User;
 use Illuminate\Database\Console\Seeds\WithoutModelEvents;
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Schema;
 
 class DatabaseSeeder extends Seeder
 {
@@ -16,17 +17,17 @@ class DatabaseSeeder extends Seeder
      */
     public function run(): void
     {
+        // Mẹo cực mạnh: Tắt kiểm tra khóa ngoại trước khi chạy tổng
+        Schema::disableForeignKeyConstraints();
 
-        // ...
         $this->call([
-            ProductSeeder::class, // ⬅️ THÊM DÒNG NÀY
-            FieldSeeder::class,
+            CategorySeeder::class,
+            BrandSeeder::class,
+            ProductSeeder::class,
+            // FieldSeeder::class,
         ]);
-        // User::factory(10)->create();
 
-        // User::factory()->create([
-        //     'name' => 'Test User',
-        //     'email' => 'test@example.com',
-        // ]);
+        // Bật lại sau khi xong
+        Schema::enableForeignKeyConstraints();
     }
 }
