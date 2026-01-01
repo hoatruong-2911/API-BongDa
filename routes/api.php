@@ -14,9 +14,11 @@ use App\Http\Controllers\Api\{
     DashboardController,
     UserController,
     BrandController,
-    CategoryController
+    CategoryController,
+    DepartmentController
 };
 use App\Models\Category;
+use App\Models\Department;
 
 //------------------------------------------------------
 
@@ -57,8 +59,11 @@ Route::middleware('auth:sanctum')->group(function () {
 
     //------------------------------------------------------
 
-    /* --- 2.2. STAFF & ABOVE (Staff, Admin) --- */
-    Route::middleware('role:staff,admin')->group(function () {
+    /* --- 2.2. ADMIN ONLY, staff --- */
+    Route::middleware('role:admin,staff')->group(function () {
+        // Quản lý User (Admin quản lý tài khoản người khác)
+        // URL: /api/admin/users
+
         // Quản lý Booking nâng cao
         Route::patch('bookings/{booking}/status', [BookingController::class, 'changeStatus']);
         Route::apiResource('bookings', BookingController::class)->only(['update', 'destroy']);
@@ -70,14 +75,8 @@ Route::middleware('auth:sanctum')->group(function () {
         // Chấm công
         Route::post('attendance/check-in', [AttendanceController::class, 'checkIn']);
         Route::post('attendance/check-out', [AttendanceController::class, 'checkOut']);
-    });
 
-    //------------------------------------------------------
 
-    /* --- 2.3. ADMIN ONLY --- */
-    Route::middleware('role:admin,staff')->group(function () {
-        // Quản lý User (Admin quản lý tài khoản người khác)
-        // URL: /api/admin/users
         Route::prefix('admin')->group(function () {
             Route::get('users', [UserController::class, 'index']);
             Route::post('users/register', [UserController::class, 'store']); // Tạo mới tài khoản
@@ -89,26 +88,62 @@ Route::middleware('auth:sanctum')->group(function () {
             // --- QUẢN LÝ BRAND (Thương hiệu) ---
             // Sử dụng apiResource sẽ tự tạo: index, store, show, update, destroy
             Route::apiResource('brands', BrandController::class);
-            Route::post('brands/add', [BrandController::class, 'store']); // Tạo mới 
-            Route::get('brands/{id}', [BrandController::class, 'show']); //(Để lấy dữ liệu )
+            // Route::post('brands/add', [BrandController::class, 'store']); // Tạo mới 
+            // Route::get('brands/{id}', [BrandController::class, 'show']); //(Để lấy dữ liệu )
             Route::patch('brands/{id}/toggle-status', [BrandController::class, 'toggleStatus']); //(Để lấy dữ liệu sửa)
-
-
 
 
             // --- QUẢN LÝ CATEGORY (Danh mục) ---
             Route::apiResource('categories', CategoryController::class);
-            Route::post('categories/add', [CategoryController::class, 'store']); // Tạo mới 
-            Route::get('categories/{id}', [CategoryController::class, 'show']); //(Để lấy dữ liệu )
+            // Route::post('categories/add', [CategoryController::class, 'store']); // Tạo mới 
+            // Route::get('categories/{id}', [CategoryController::class, 'show']); //(Để lấy dữ liệu )
             Route::patch('categories/{id}/toggle-status', [CategoryController::class, 'toggleStatus']); //(Để lấy dữ liệu sửa)
 
             // --- QUẢN LÝ Product (Danh mục) ---
             Route::apiResource('products', ProductController::class);
-            Route::post('products/add', [ProductController::class, 'store']); // Tạo mới
-            Route::get('products/{id}', [ProductController::class, 'show']); //(Để lấy dữ liệu )
+            // Route::post('products/add', [ProductController::class, 'store']); // Tạo mới
+            // Route::get('products/{id}', [ProductController::class, 'show']); //(Để lấy dữ liệu )
             Route::patch('products/{id}/toggle-status', [ProductController::class, 'toggleStatus']);
-            
 
+            // quản lý phòng ban 
+            Route::apiResource('departments', DepartmentController::class);
+            // Route::post('departments/add', [DepartmentController::class, 'store']); // Tạo mới
+            // Route::get('departments/{id}', [DepartmentController::class, 'show']); //(Để lấy dữ liệu )
+            Route::patch('departments/{id}/toggle-status', [DepartmentController::class, 'toggleStatus']);
+
+            // quản lý nhân viên 
+            Route::apiResource('staff', StaffController::class);
+            // Route::post('staff/add', [StaffController::class, 'store']); // Tạo mới
+            // Route::get('staff/{id}', [StaffController::class, 'show']); //(Để lấy dữ liệu )
+            Route::patch('staff/{id}/toggle-status', [StaffController::class, 'toggleStatus']);
+
+
+            // --- QUẢN LÝ LỊCH CA LÀM ---
+
+            // 1. Quản lý danh mục loại ca (Sáng, Chiều, Tối...)
+            // Route này tạo ra các URL: /shifts (GET, POST), /shifts/{id} (GET, PUT, DELETE)
+            Route::apiResource('shifts', ShiftController::class);
+
+            // 2. Quản lý lịch phân ca (Shift Assignments)
+            // Lấy danh sách tổng quát theo tuần
+            Route::get('shift-assignments', [ShiftController::class, 'getAssignments']);
+
+            // Gán ca làm mới (POST)
+            Route::post('shift-assignments', [ShiftController::class, 'assignShift']);
+
+            // Lấy chi tiết MỘT bản ghi phân ca cụ thể để đổ vào Form Edit (GET)
+            // Phải đặt dòng này rõ ràng để Frontend gọi đúng dữ liệu cần sửa
+            Route::get('shift-assignments/{id}', [ShiftController::class, 'getAssignmentDetail']);
+
+            // Cập nhật bản ghi phân ca đó (PUT)
+            Route::put('shift-assignments/{id}', [ShiftController::class, 'updateAssignment']);
+
+            // Xóa một bản ghi phân ca (DELETE)
+            Route::delete('shift-assignments/{id}', [ShiftController::class, 'removeAssignment']);
+
+            // 3. Lấy chi tiết toàn bộ lịch sử ca của một nhân viên (Trang ShiftDetail)
+            // Route này dùng cho nút "Xem chi tiết" (icon con mắt)
+            Route::get('staff-shifts/{id}', [ShiftController::class, 'getStaffDetail']);
         });
 
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);

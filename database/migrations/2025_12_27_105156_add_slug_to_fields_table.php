@@ -11,9 +11,8 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('shift_assignments', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::table('fields', function (Blueprint $table) {
+            $table->string('slug')->unique()->after('name');
         });
     }
 
@@ -22,6 +21,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('shift_assignments');
+        Schema::table('fields', function (Blueprint $table) {
+            $table->dropColumn('slug');
+        });
     }
 };

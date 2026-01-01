@@ -4,23 +4,27 @@ namespace Database\Seeders;
 
 use Illuminate\Database\Seeder;
 use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
 
 class FieldSeeder extends Seeder
 {
-    /**
-     * Run the database seeds.
-     */
     public function run(): void
     {
+        // Xóa dữ liệu cũ để tránh lỗi khóa ngoại hoặc trùng lặp
+        DB::table('fields')->delete();
+
         DB::table('fields')->insert([
             [
                 'name' => 'Sân 7 - 7 người',
-                'size' => 7,
-                'location' => 'Khu A - Tầng 3',
-                'price' => 750000.00,
+                'slug' => Str::slug('Sân 7 - 7 người'),
                 'type' => 'f7',
-                'surface' => 'Cỏ nhân tạo tiêu chuẩn', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 750000.00,
+                'size' => 7,
+                'surface' => 'Cỏ nhân tạo tiêu chuẩn',
                 'description' => 'Sân 7 người tiêu chuẩn thi đấu, có mái che.',
+                'image' => 'fields/san-7-default.jpg', // Cung cấp ảnh mặc định để tránh lỗi
+                'features' => json_encode(['Mái che', 'Đèn LED', 'Wifi miễn phí']),
+                'location' => 'Khu A - Tầng 3',
                 'rating' => 4.5,
                 'reviews_count' => 76,
                 'available' => true,
@@ -30,12 +34,15 @@ class FieldSeeder extends Seeder
             ],
             [
                 'name' => 'Sân 5 - 5 người',
-                'size' => 5,
-                'location' => 'Khu C - Tầng 1',
-                'price' => 480000.00,
+                'slug' => Str::slug('Sân 5 - 5 người'),
                 'type' => 'f5',
-                'surface' => 'Cỏ nhân tạo 3G', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 480000.00,
+                'size' => 5,
+                'surface' => 'Cỏ nhân tạo 3G',
                 'description' => 'Sân 5 người có chất lượng cỏ tốt.',
+                'image' => 'fields/san-5-default.jpg',
+                'features' => json_encode(['Cỏ 3G', 'Nước uống miễn phí']),
+                'location' => 'Khu C - Tầng 1',
                 'rating' => 4.2,
                 'reviews_count' => 92,
                 'available' => true,
@@ -45,12 +52,15 @@ class FieldSeeder extends Seeder
             ],
             [
                 'name' => 'Sân 9 - 7 người ngoài trời',
-                'size' => 7,
-                'location' => 'Khu D - Sân ngoài',
-                'price' => 700000.00,
+                'slug' => Str::slug('Sân 9 - 7 người ngoài trời'),
                 'type' => 'f7',
-                'surface' => 'Cỏ tự nhiên', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 700000.00,
+                'size' => 7,
+                'surface' => 'Cỏ tự nhiên',
                 'description' => 'Sân 7 người mới được nâng cấp, ánh sáng tốt.',
+                'image' => 'fields/san-7-ngoai-troi.jpg',
+                'features' => json_encode(['Cỏ tự nhiên', 'Khán đài nhỏ']),
+                'location' => 'Khu D - Sân ngoài',
                 'rating' => 4.3,
                 'reviews_count' => 105,
                 'available' => true,
@@ -60,12 +70,15 @@ class FieldSeeder extends Seeder
             ],
             [
                 'name' => 'Sân 10 - Sân 11 người ngoài trời',
-                'size' => 11,
-                'location' => 'Khu D - Sân chính',
-                'price' => 1200000.00,
+                'slug' => Str::slug('Sân 10 - Sân 11 người ngoài trời'),
                 'type' => 'f11',
-                'surface' => 'Cỏ tự nhiên FIFA', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 1200000.00,
+                'size' => 11,
+                'surface' => 'Cỏ tự nhiên FIFA',
                 'description' => 'Sân 11 người lớn nhất khu vực.',
+                'image' => 'fields/san-11-fifa.jpg',
+                'features' => json_encode(['Chuẩn FIFA', 'Phòng thay đồ', 'Bãi xe rộng']),
+                'location' => 'Khu D - Sân chính',
                 'rating' => 4.6,
                 'reviews_count' => 178,
                 'available' => true,
@@ -75,12 +88,15 @@ class FieldSeeder extends Seeder
             ],
             [
                 'name' => 'Sân 4 - Sân 5 người',
-                'size' => 5,
-                'location' => 'Khu C - Tầng 1',
-                'price' => 450000.00,
+                'slug' => Str::slug('Sân 4 - Sân 5 người'),
                 'type' => 'f5',
-                'surface' => 'Cỏ nhân tạo', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 450000.00,
+                'size' => 5,
+                'surface' => 'Cỏ nhân tạo',
                 'description' => 'Sân 5 người tiêu chuẩn, thường xuyên kín lịch.',
+                'image' => 'fields/san-5-standard.jpg',
+                'features' => json_encode(['Giá rẻ', 'Gần căn tin']),
+                'location' => 'Khu C - Tầng 1',
                 'rating' => 4.2,
                 'reviews_count' => 87,
                 'available' => true,
@@ -90,12 +106,15 @@ class FieldSeeder extends Seeder
             ],
             [
                 'name' => 'Sân 5 - Sân 7 người VIP',
-                'size' => 7,
-                'location' => 'Khu B - Tầng 3',
-                'price' => 900000.00,
+                'slug' => Str::slug('Sân 5 - Sân 7 người VIP'),
                 'type' => 'f7',
-                'surface' => 'Cỏ nhân tạo cao cấp', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 900000.00,
+                'size' => 7,
+                'surface' => 'Cỏ nhân tạo cao cấp',
                 'description' => 'Sân 7 người VIP, có điều hòa/quạt công suất lớn.',
+                'image' => 'fields/san-7-vip.jpg',
+                'features' => json_encode(['VIP', 'Điều hòa', 'Phòng tắm nóng lạnh']),
+                'location' => 'Khu B - Tầng 3',
                 'rating' => 4.8,
                 'reviews_count' => 142,
                 'available' => true,
@@ -105,12 +124,15 @@ class FieldSeeder extends Seeder
             ],
             [
                 'name' => 'Sân 6 - Sân 5 người trong nhà',
-                'size' => 5,
-                'location' => 'Khu C - Tầng 2',
-                'price' => 550000.00,
+                'slug' => Str::slug('Sân 6 - Sân 5 người trong nhà'),
                 'type' => 'f5',
-                'surface' => 'Thảm nhựa tổng hợp', // ⬅️ THÊM TRƯỜNG NÀY
+                'price' => 550000.00,
+                'size' => 5,
+                'surface' => 'Thảm nhựa tổng hợp',
                 'description' => 'Sân 5 người trong nhà, không lo mưa nắng.',
+                'image' => 'fields/san-5-indoor.jpg',
+                'features' => json_encode(['Trong nhà', 'Thảm Futsal chuyên dụng']),
+                'location' => 'Khu C - Tầng 2',
                 'rating' => 4.5,
                 'reviews_count' => 113,
                 'available' => true,

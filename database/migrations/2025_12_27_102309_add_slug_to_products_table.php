@@ -11,9 +11,9 @@ return new class extends Migration
      */
     public function up(): void
     {
-        Schema::create('shifts', function (Blueprint $table) {
-            $table->id();
-            $table->timestamps();
+        Schema::table('products', function (Blueprint $table) {
+            // Thêm cột slug vào sau cột name, cho phép null tạm thời để tránh lỗi với dữ liệu cũ
+            $table->string('slug')->nullable()->after('name');
         });
     }
 
@@ -22,6 +22,8 @@ return new class extends Migration
      */
     public function down(): void
     {
-        Schema::dropIfExists('shifts');
+        Schema::table('products', function (Blueprint $table) {
+            $table->dropColumn('slug');
+        });
     }
 };

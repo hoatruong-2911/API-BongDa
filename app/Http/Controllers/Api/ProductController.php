@@ -26,7 +26,7 @@ class ProductController extends Controller
         $data = $request->validated();
 
         // Tự động tạo Slug nếu Model chưa xử lý
-        // $data['slug'] = Str::slug($data['name']);
+        $data['slug'] = Str::slug($data['name']);
 
         if ($request->hasFile('image')) {
             $data['image'] = $request->file('image')->store('products', 'public');

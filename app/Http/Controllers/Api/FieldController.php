@@ -155,6 +155,7 @@ class FieldController extends Controller
             // Tạo sân mới
             $field = Field::create([
                 'name'          => $validated['name'],
+                'slug'          => Str::slug($validated['name']),
                 'type'          => $validated['type'],
                 'price'         => $validated['price'],
                 'size'          => $validated['size'],
@@ -193,6 +194,7 @@ class FieldController extends Controller
             // Bạn có thể validate dữ liệu ở đây hoặc dùng StoreFieldRequest tương tự hàm store
             $field->update([
                 'name'        => $request->name,
+                'slug'        => Str::slug($request->name), // ✅ Thêm cập nhật slug ở đây
                 'type'        => $request->type,
                 'price'       => $request->price,
                 'size'        => $request->size,

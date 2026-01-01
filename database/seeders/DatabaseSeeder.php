@@ -24,7 +24,14 @@ class DatabaseSeeder extends Seeder
             CategorySeeder::class,
             BrandSeeder::class,
             ProductSeeder::class,
-            // FieldSeeder::class,
+            FieldSeeder::class,
+            BookingSeeder::class,
+            // OrderSeeder::class,
+            DepartmentSeeder::class,
+            StaffSeeder::class,
+            ShiftSeeder::class,
+            ShiftAssignmentSeeder::class,
+            // UserSeeder::class,
         ]);
 
         // Bật lại sau khi xong
