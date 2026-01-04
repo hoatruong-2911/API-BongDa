@@ -50,30 +50,55 @@ class ShiftController extends Controller
         ]);
     }
 
-    // Gán ca làm việc mới - Sử dụng ShiftRequest
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
     public function assignShift(ShiftRequest $request)
     {
         $validated = $request->validated();
+        $staffId = $validated['staff_id'];
+        $workDate = $validated['work_date'];
 
-        $assignment = ShiftAssignment::updateOrCreate(
-            [
-                'staff_id' => $validated['staff_id'],
-                'work_date' => $validated['work_date']
-            ],
-            ['shift_id' => $validated['shift_id'], 'note' => $validated['note'] ?? null]
-        );
+        $staff = Staff::find($staffId);
+        if (!$staff || $staff->status !== 'active') {
+            return response()->json(['success' => false, 'message' => 'Nhân viên không thể phân ca'], 422);
+        }
 
-        return response()->json([
-            'success' => true,
-            'message' => 'Phân ca thành công!',
-            'data' => $assignment
-        ]);
+        // 1. Luôn xóa sạch ca cũ của ngày này
+        ShiftAssignment::where('staff_id', $staffId)
+            ->where('work_date', $workDate)
+            ->delete();
+
+        // 2. Lấy mảng ID từ request
+        $shiftIds = $request->shift_id ? (array)$request->shift_id : [];
+
+        // 3. Nếu mảng rỗng -> Kết thúc (Ngày đó sẽ hiện chữ NGHỈ trên Index)
+        if (empty($shiftIds)) {
+            return response()->json(['success' => true, 'message' => 'Đã cập nhật trạng thái nghỉ làm cho ngày ' . $workDate]);
+        }
+
+        // 4. Nếu có ca -> Tạo mới các bản ghi
+        foreach ($shiftIds as $id) {
+            ShiftAssignment::create([
+                'staff_id'  => $staffId,
+                'work_date' => $workDate,
+                'shift_id'  => $id,
+                'note'      => $request->note ?? null
+            ]);
+        }
+
+        return response()->json(['success' => true, 'message' => 'Cập nhật lịch thành công!']);
     }
+    //----------------------------------------------------------
+    //----------------------------------------------------------
 
     public function index()
     {
         return response()->json(['success' => true, 'data' => Shift::all()]);
     }
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
 
     // Tạo ca làm mới - Sử dụng ShiftRequest
     public function store(ShiftRequest $request)
@@ -82,10 +107,17 @@ class ShiftController extends Controller
         return response()->json(['success' => true, 'message' => 'Tạo ca làm việc thành công', 'data' => $shift], 201);
     }
 
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
     public function show(Shift $shift)
     {
         return response()->json(['success' => true, 'data' => $shift]);
     }
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
 
     // Cập nhật ca làm - Sử dụng ShiftRequest
     public function update(ShiftRequest $request, Shift $shift)
@@ -93,6 +125,10 @@ class ShiftController extends Controller
         $shift->update($request->validated());
         return response()->json(['success' => true, 'message' => 'Cập nhật ca thành công', 'data' => $shift]);
     }
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
 
     public function destroy(Shift $shift)
     {
@@ -102,6 +138,10 @@ class ShiftController extends Controller
         $shift->delete();
         return response()->json(['success' => true, 'message' => 'Xóa ca thành công']);
     }
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
 
     public function removeAssignment($id)
     {
@@ -113,6 +153,10 @@ class ShiftController extends Controller
         $assignment->delete();
         return response()->json(['success' => true, 'message' => 'Đã xóa lịch làm việc']);
     }
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
 
     // Thêm hàm này vào ShiftController.php
     public function getStaffDetail($id)
@@ -134,29 +178,37 @@ class ShiftController extends Controller
         ]);
     }
 
+    //----------------------------------------------------------
+    //----------------------------------------------------------
 
-    // Sửa lại hàm này trong ShiftController.php
+
+
+    // Hàm lấy dữ liệu để Edit cũng cần trả về mảng ID để Frontend map vào Select
     public function getAssignmentDetail($id)
     {
-        // LOG để bro kiểm tra trong file laravel.log nếu cần: Log::info("Đang tìm ID: " . $id);
+        // Tìm 1 bản ghi làm gốc để lấy staff_id và work_date
+        $base = ShiftAssignment::find($id);
+        if (!$base) return response()->json(['success' => false], 404);
 
-        // BƯỚC 1: Tìm bản ghi PHÂN CA (ShiftAssignment) theo đúng $id truyền vào
-        $assignment = ShiftAssignment::with(['staff', 'shift'])->find($id);
+        // Lấy tất cả các ca trong cùng ngày đó của nhân viên
+        $allShiftsInDay = ShiftAssignment::where('staff_id', $base->staff_id)
+            ->where('work_date', $base->work_date)
+            ->get();
 
-        // BƯỚC 2: Kiểm tra nếu không tồn tại
-        if (!$assignment) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy lịch phân ca ID: ' . $id
-            ], 404);
-        }
-
-        // BƯỚC 3: Trả về dữ liệu bản ghi đó
         return response()->json([
             'success' => true,
-            'data' => $assignment
+            'data' => [
+                'staff'    => Staff::find($base->staff_id),
+                'work_date' => $base->work_date,
+                'note'     => $base->note,
+                'shift_ids' => $allShiftsInDay->pluck('shift_id') // Trả về mảng ID [1, 2]
+            ]
         ]);
     }
+
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
 
     public function updateAssignment(Request $request, $id)
     {
@@ -167,5 +219,30 @@ class ShiftController extends Controller
             'note' => $request->note
         ]);
         return response()->json(['success' => true, 'message' => 'Cập nhật thành công']);
+    }
+
+    //----------------------------------------------------------
+    //----------------------------------------------------------
+
+
+    public function removeStaffWeeklyAssignments(Request $request, $staffId)
+    {
+        // Lấy ngày bắt đầu và kết thúc tuần từ request để xóa chính xác
+        $start = $request->input('start_date');
+        $end = $request->input('end_date');
+
+        if (!$start || !$end) {
+            return response()->json(['success' => false, 'message' => 'Thiếu thông tin ngày'], 400);
+        }
+
+        // Xóa tất cả các ca của nhân viên này trong khoảng thời gian xem
+        ShiftAssignment::where('staff_id', $staffId)
+            ->whereBetween('work_date', [$start, $end])
+            ->delete();
+
+        return response()->json([
+            'success' => true,
+            'message' => 'Đã xóa toàn bộ lịch làm việc trong tuần của nhân sự'
+        ]);
     }
 }

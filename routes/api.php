@@ -144,6 +144,16 @@ Route::middleware('auth:sanctum')->group(function () {
             // 3. Lấy chi tiết toàn bộ lịch sử ca của một nhân viên (Trang ShiftDetail)
             // Route này dùng cho nút "Xem chi tiết" (icon con mắt)
             Route::get('staff-shifts/{id}', [ShiftController::class, 'getStaffDetail']);
+
+
+            // xóa
+            Route::delete('staff-assignments/bulk/{staffId}', [ShiftController::class, 'removeStaffWeeklyAssignments']);
+
+            // chấm công
+            Route::get('attendances', [AttendanceController::class, 'index']);
+            Route::post('attendances', [AttendanceController::class, 'store']);
+            Route::get('attendances/{id}', [AttendanceController::class, 'show']);    // THIẾU CÁI NÀY NÊN LỖI 404
+            Route::delete('attendances/{id}', [AttendanceController::class, 'destroy']); // CẦN CHO NÚT XÓA
         });
 
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);

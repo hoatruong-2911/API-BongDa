@@ -27,7 +27,7 @@ class ShiftRequest extends FormRequest
         if ($method === 'assignShift') {
             return [
                 'staff_id'  => 'required|exists:staff,id',
-                'shift_id'  => 'required|exists:shifts,id',
+                'shift_id'  => 'nullable|array',
                 'work_date' => 'required|date',
                 'note'      => 'nullable|string|max:500',
             ];
