@@ -282,4 +282,34 @@ class BookingController extends Controller
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
         }
     }
+
+    /**
+     * Xóa hoàn toàn một booking khỏi hệ thống (Dành cho Admin/Staff).
+     */
+    public function destroy(Booking $booking): JsonResponse
+    {
+        $user = request()->user();
+
+        // 1. Chỉ Admin hoặc Staff mới có quyền xóa
+        if (!$user->isAdmin() && !$user->isStaff()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có quyền thực hiện hành động này.'
+            ], 403);
+        }
+
+        try {
+            $booking->delete();
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã xóa đơn đặt sân thành công!'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi xóa: ' . $e->getMessage()
+            ], 500);
+        }
+    }
 }

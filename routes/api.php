@@ -15,6 +15,7 @@ use App\Http\Controllers\Api\{
     UserController,
     BrandController,
     CategoryController,
+    CustomerController,
     DepartmentController
 };
 use App\Models\Category;
@@ -22,16 +23,23 @@ use App\Models\Department;
 
 //------------------------------------------------------
 
-/* --- 1. PUBLIC ROUTES --- */
+/* --- 1. PUBLIC ROUTES (Ai cũng xem được) --- */
 
 Route::prefix('auth')->group(function () {
     Route::post('login', [AuthController::class, 'login']);
     Route::post('register', [AuthController::class, 'register']);
 });
 
+// Các Route công khai cho Sân bóng - THÊM DÒNG NÀY VÀO ĐÂY:
+Route::get('fields', [FieldController::class, 'index']); // Khách xem danh sách sân
+Route::get('fields/{field}', [FieldController::class, 'show']); // Khách xem chi tiết sân
+Route::get('fields/{field}/schedule', [FieldController::class, 'getSchedule']); // Khách xem lịch sân
+
+Route::get('/products/customer', [ProductController::class, 'listForCustomer']);
 Route::get('products', [ProductController::class, 'index']);
 Route::get('products/{product}', [ProductController::class, 'show']);
-
+Route::get('/categories', [CategoryController::class, 'index']);
+Route::get('/brands', [BrandController::class, 'index']);
 //------------------------------------------------------
 
 /* --- 2. PROTECTED ROUTES (Yêu cầu Đăng nhập) --- */
@@ -47,9 +55,9 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /* --- 2.1. CUSTOMER & ABOVE (Customer, Staff, Admin) --- */
     Route::middleware('role:customer,staff,admin')->group(function () {
-        Route::get('fields', [FieldController::class, 'index']);
-        Route::get('fields/{field}', [FieldController::class, 'show']);
-        Route::get('fields/{field}/schedule', [FieldController::class, 'getSchedule']);
+        // Route::get('fields', [FieldController::class, 'index']);
+        // Route::get('fields/{field}', [FieldController::class, 'show']);
+        // Route::get('fields/{field}/schedule', [FieldController::class, 'getSchedule']);
 
         // Booking cơ bản
         Route::apiResource('bookings', BookingController::class)->only(['index', 'store', 'show']);
@@ -154,6 +162,10 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::post('attendances', [AttendanceController::class, 'store']);
             Route::get('attendances/{id}', [AttendanceController::class, 'show']);    // THIẾU CÁI NÀY NÊN LỖI 404
             Route::delete('attendances/{id}', [AttendanceController::class, 'destroy']); // CẦN CHO NÚT XÓA
+
+
+            // quan ly khach hang
+            Route::apiResource('customers', CustomerController::class);
         });
 
         Route::get('dashboard/summary', [DashboardController::class, 'summary']);

@@ -7,6 +7,7 @@ use App\Models\Product;
 use App\Http\Requests\Api\Product\ProductRequest;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
+use Illuminate\Http\Request; 
 
 class ProductController extends Controller
 {
@@ -100,6 +101,56 @@ class ProductController extends Controller
             'success' => true,
             'message' => 'Đã đổi trạng thái sản phẩm!',
             'available' => $product->available
+        ]);
+    }
+
+    // Nhớ check xem đã có dòng này ở đầu file chưa bro
+
+    // Hàm dành riêng cho trang Sản phẩm của khách hàng
+    public function listForCustomer(Request $request)
+    {
+        // Load quan hệ và chỉ lấy sản phẩm đang kinh doanh (available = 1)
+        $query = Product::with(['category:id,name', 'brand:id,name'])
+            ->where('available', 1);
+
+        // 1. Lọc theo danh mục (category)
+        if ($request->filled('category') && $request->category !== 'all') {
+            $query->where('category_id', $request->category);
+        }
+
+        // 2. Lọc theo thương hiệu (brand)
+        if ($request->filled('brand') && $request->brand !== 'all') {
+            $query->where('brand_id', $request->brand);
+        }
+
+        // 3. Tìm kiếm theo tên
+        if ($request->filled('search')) {
+            $query->where('name', 'like', '%' . $request->search . '%');
+        }
+
+        // 4. Sắp xếp (Sort)
+        switch ($request->sort) {
+            case 'price-asc':
+                $query->orderBy('price', 'asc');
+                break;
+            case 'price-desc':
+                $query->orderBy('price', 'desc');
+                break;
+            case 'name-asc':
+                $query->orderBy('name', 'asc');
+                break;
+            case 'name-desc':
+                $query->orderBy('name', 'desc');
+                break;
+            default:
+                $query->latest(); // Mặc định mới nhất
+                break;
+        }
+
+        // Trả về dữ liệu bọc trong 'data' để khớp với logic mapping ở Frontend của bro
+        return response()->json([
+            'success' => true,
+            'data' => $query->get()
         ]);
     }
 }
