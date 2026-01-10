@@ -1,6 +1,6 @@
 <?php
 
-namespace App\Http\Requests\Shift;
+namespace App\Http\Api\Requests\Shift;
 
 use Illuminate\Foundation\Http\FormRequest;
 

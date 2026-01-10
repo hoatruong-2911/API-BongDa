@@ -4,7 +4,8 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Models\Staff;
-use App\Http\Requests\Staff\StaffRequest; // Dùng 1 file duy nhất
+use App\Http\Api\Requests\Staff\StaffRequest; // Dùng 1 file duy nhất
+
 use Illuminate\Support\Facades\Storage;
 
 use Illuminate\Http\JsonResponse;

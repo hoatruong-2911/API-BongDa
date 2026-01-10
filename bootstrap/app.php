@@ -30,6 +30,10 @@ return Application::configure(basePath: dirname(__DIR__))
         //     \Laravel\Sanctum\Http\Middleware\EnsureFrontendRequestsAreStateful::class,
         // ]);
 
+        $middleware->validateCsrfTokens(except: [
+        'api/payment/webhook', // 🛑 Cho phép cổng thanh toán gọi vào mà không cần token CSRF
+    ]);
+
     })
     ->withExceptions(function (Exceptions $exceptions) {
         //

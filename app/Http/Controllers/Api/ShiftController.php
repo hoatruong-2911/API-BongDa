@@ -8,7 +8,9 @@ use App\Models\ShiftAssignment;
 use App\Models\Staff;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
-use App\Http\Requests\Shift\ShiftRequest; // Gọi file validate riêng
+// use App\Http\Requests\Shift\ShiftRequest; // Gọi file validate riêng
+use App\Http\Api\Requests\Shift\ShiftRequest;
+
 
 class ShiftController extends Controller
 {

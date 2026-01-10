@@ -16,7 +16,8 @@ use App\Http\Controllers\Api\{
     BrandController,
     CategoryController,
     CustomerController,
-    DepartmentController
+    DepartmentController,
+    PaymentWebhookController
 };
 use App\Models\Category;
 use App\Models\Department;
@@ -40,6 +41,12 @@ Route::get('products', [ProductController::class, 'index']);
 Route::get('products/{product}', [ProductController::class, 'show']);
 Route::get('/categories', [CategoryController::class, 'index']);
 Route::get('/brands', [BrandController::class, 'index']);
+
+
+// Đây là cổng để ePay/PayOS bắn tin nhắn báo có tiền về
+Route::post('/payment/webhook', [PaymentWebhookController::class, 'handleWebhook']);
+// Thêm dòng này để Frontend Polling hỏi thăm trạng thái đơn hàng
+Route::get('orders/check-status/{orderCode}', [OrderController::class, 'checkStatus']);
 //------------------------------------------------------
 
 /* --- 2. PROTECTED ROUTES (Yêu cầu Đăng nhập) --- */
@@ -61,7 +68,12 @@ Route::middleware('auth:sanctum')->group(function () {
 
         // Booking cơ bản
         Route::apiResource('bookings', BookingController::class)->only(['index', 'store', 'show']);
+
+        //  cho phép khách đăng nhập được "chốt đơn"
         Route::apiResource('orders', OrderController::class)->only(['store']);
+
+        // lịch sử đơn hàng
+        Route::get('/orders/{orderCode}', [OrderController::class, 'show']);
     });
 
 
