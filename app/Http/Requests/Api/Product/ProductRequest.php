@@ -20,7 +20,7 @@ class ProductRequest extends FormRequest
             'brand_id' => 'required|exists:brands,id',
             'price' => 'required|numeric|min:0',
             'stock' => 'required|integer|min:0',
-            'image' => 'nullable|image|mimes:jpeg,png,jpg,gif|max:2048',
+            'image' => 'nullable|image|mimes:jpeg,webp,png,jpg,gif|max:2048',
             'description' => 'nullable|string',
             'available' => 'required',
         ];

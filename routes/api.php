@@ -62,18 +62,24 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /* --- 2.1. CUSTOMER & ABOVE (Customer, Staff, Admin) --- */
     Route::middleware('role:customer,staff,admin')->group(function () {
-        // Route::get('fields', [FieldController::class, 'index']);
-        // Route::get('fields/{field}', [FieldController::class, 'show']);
-        // Route::get('fields/{field}/schedule', [FieldController::class, 'getSchedule']);
+        // Ưu tiên các route cụ thể lên trước
+        Route::get('/bookings/my-bookings', [BookingController::class, 'myBookings']);
+        Route::get('/bookings/{id}', [BookingController::class, 'show']); // Ghi đè show của Resource nếu cần ID cụ thể
+        Route::patch('/bookings/{booking}/cancel', [BookingController::class, 'cancelBooking']);
+        Route::apiResource('bookings', BookingController::class)->only(['index', 'store']);
 
-        // Booking cơ bản
-        Route::apiResource('bookings', BookingController::class)->only(['index', 'store', 'show']);
 
-        //  cho phép khách đăng nhập được "chốt đơn"
-        Route::apiResource('orders', OrderController::class)->only(['store']);
 
-        // lịch sử đơn hàng
+        // 🛑 QUAN TRỌNG: Mở rộng quyền xem danh sách đơn hàng cho cả Khách hàng
+        // apiResource này sẽ lo hàm index (danh sách) và store (tạo đơn)
+        Route::apiResource('orders', OrderController::class)->only(['index', 'store']);
+        Route::put('orders/{id}/status', [OrderController::class, 'updateStatus']);
+        // Xem chi tiết đơn hàng theo mã (Dùng chung cho cả 3 role)
         Route::get('/orders/{orderCode}', [OrderController::class, 'show']);
+
+        Route::apiResource('bookings', BookingController::class)->only(['index', 'store']);
+        // 🛑 THÊM DÒNG NÀY: Route dành riêng cho việc khách tự hủy đơn
+        Route::patch('/bookings/{booking}/cancel-my-booking', [BookingController::class, 'cancelBooking']);
     });
 
 
@@ -81,16 +87,17 @@ Route::middleware('auth:sanctum')->group(function () {
 
     /* --- 2.2. ADMIN ONLY, staff --- */
     Route::middleware('role:admin,staff')->group(function () {
-        // Quản lý User (Admin quản lý tài khoản người khác)
-        // URL: /api/admin/users
-
         // Quản lý Booking nâng cao
         Route::patch('bookings/{booking}/status', [BookingController::class, 'changeStatus']);
         Route::apiResource('bookings', BookingController::class)->only(['update', 'destroy']);
 
-        // Quản lý Order
+
         Route::put('orders/{order}/update-status', [OrderController::class, 'updateStatus']);
-        Route::apiResource('orders', OrderController::class)->only(['index', 'show', 'update', 'destroy']);
+
+
+
+        // 🛑 SỬA LẠI: Chỉ để lại những hàm mà Customer KHÔNG ĐƯỢC PHÉP làm (Sửa, Xóa)
+        Route::apiResource('orders', OrderController::class)->only(['update', 'destroy']);
 
         // Chấm công
         Route::post('attendance/check-in', [AttendanceController::class, 'checkIn']);
@@ -98,6 +105,14 @@ Route::middleware('auth:sanctum')->group(function () {
 
 
         Route::prefix('admin')->group(function () {
+            // Quản lý Order nâng cao (Cập nhật trạng thái, xóa đơn)
+            Route::put('orders/{id}', [OrderController::class, 'update']);
+            Route::get('orders', [OrderController::class, 'indexAdmin']); // Lấy danh sách toàn bộ đơn
+            Route::put('orders/{id}/status', [OrderController::class, 'updateStatus']); // Cập nhật trạng thái
+            Route::get('orders/{id}', [OrderController::class, 'showAdmin']); // Xem chi tiết đơn bất kỳ
+            Route::delete('orders/{id}', [OrderController::class, 'destroy']); // Xóa đơn
+
+            // --- QUẢN LÝ USER ---
             Route::get('users', [UserController::class, 'index']);
             Route::post('users/register', [UserController::class, 'store']); // Tạo mới tài khoản
             Route::put('users/{id}', [UserController::class, 'update']); // Sửa theo ID truyền vào

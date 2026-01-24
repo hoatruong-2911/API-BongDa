@@ -20,13 +20,25 @@ class Booking extends Model
         // 'start_time' và 'end_time' có thể không cần cast nếu chúng là kiểu time
     ];
 
-    public function user(): BelongsTo
-    {
-        return $this->belongsTo(User::class);
-    }
+    // public function user(): BelongsTo
+    // {
+    //     return $this->belongsTo(User::class);
+    // }
 
+    // public function field(): BelongsTo
+    // {
+    //     return $this->belongsTo(Field::class);
+    // }
+
+    // File app/Models/Booking.php
     public function field(): BelongsTo
     {
-        return $this->belongsTo(Field::class);
+        // Bro phải chỉ rõ khóa ngoại 'field_id' nếu nó không tự nhận diện
+        return $this->belongsTo(Field::class, 'field_id');
+    }
+
+    public function user(): BelongsTo
+    {
+        return $this->belongsTo(User::class, 'user_id');
     }
 }
