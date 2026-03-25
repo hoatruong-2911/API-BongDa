@@ -4,6 +4,7 @@ namespace App\Http\Controllers\Api;
 
 use App\Http\Controllers\Controller;
 use App\Http\Requests\Api\Admin\StoreFieldRequest;
+use App\Models\Booking;
 use App\Models\Field; // ⬅️ THÊM DÒNG NÀY
 use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse; // ⬅️ THÊM DÒNG NÀY
@@ -247,4 +248,27 @@ class FieldController extends Controller
             ], 500);
         }
     }
+
+    public function getLiveStatus(Request $request): JsonResponse
+    {
+        $date = $request->query('date', now()->toDateString());
+        $fields = \App\Models\Field::all();
+
+        // Chỉ lấy những đơn đang chiếm chỗ trên sân
+        // Loại bỏ: 'cancelled' (Hủy) và 'completed' (Đã đá xong)
+        $bookings = \App\Models\Booking::with('field')
+            ->whereDate('booking_date', $date)
+            ->whereNotIn('status', ['cancelled', 'completed', 'rejected'])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'fields' => $fields,
+                'bookings' => $bookings
+            ]
+        ]);
+    }
+
+   
 }

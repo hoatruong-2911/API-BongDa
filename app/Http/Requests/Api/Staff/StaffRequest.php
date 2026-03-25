@@ -1,6 +1,7 @@
 <?php
 
-namespace App\Http\Api\Requests\Staff;
+// namespace App\Http\Api\Requests\Staff;
+namespace App\Http\Requests\Api\Staff;
 
 
 use Illuminate\Foundation\Http\FormRequest;

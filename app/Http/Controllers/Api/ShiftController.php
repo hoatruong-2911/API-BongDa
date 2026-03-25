@@ -2,6 +2,7 @@
 
 namespace App\Http\Controllers\Api;
 
+use App\Http\Requests\Api\Shift\ShiftRequest;
 use App\Http\Controllers\Controller;
 use App\Models\Shift;
 use App\Models\ShiftAssignment;
@@ -9,7 +10,7 @@ use App\Models\Staff;
 use Carbon\Carbon;
 use Illuminate\Http\Request;
 // use App\Http\Requests\Shift\ShiftRequest; // Gọi file validate riêng
-use App\Http\Api\Requests\Shift\ShiftRequest;
+// use App\Http\Api\Requests\Shift\ShiftRequest;
 
 
 class ShiftController extends Controller
@@ -245,6 +246,42 @@ class ShiftController extends Controller
         return response()->json([
             'success' => true,
             'message' => 'Đã xóa toàn bộ lịch làm việc trong tuần của nhân sự'
+        ]);
+    }
+
+
+    public function getMySchedule(Request $request)
+    {
+        // 1. Lấy thông tin Staff tương ứng với User đang đăng nhập
+        $user = auth()->user();
+        $staff = \App\Models\Staff::where('user_id', $user->id)->first();
+
+        if (!$staff) {
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy hồ sơ nhân viên'], 404);
+        }
+
+        // 2. Xác định khoảng thời gian tuần này (Thứ 2 đến Chủ nhật)
+        $date = $request->input('date') ? \Carbon\Carbon::parse($request->input('date')) : \Carbon\Carbon::now();
+        $startOfWeek = $date->copy()->startOfWeek();
+        $endOfWeek = $date->copy()->endOfWeek();
+
+        // 3. Lấy lịch làm việc của nhân viên này trong tuần đó
+        $assignments = \App\Models\ShiftAssignment::with('shift')
+            ->where('staff_id', $staff->id)
+            ->whereBetween('work_date', [$startOfWeek->format('Y-m-d'), $endOfWeek->format('Y-m-d')])
+            ->orderBy('work_date', 'asc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => [
+                'staff' => $staff,
+                'week_range' => [
+                    'start' => $startOfWeek->format('d/m/Y'),
+                    'end' => $endOfWeek->format('d/m/Y')
+                ],
+                'assignments' => $assignments
+            ]
         ]);
     }
 }

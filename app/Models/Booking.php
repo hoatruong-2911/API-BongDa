@@ -41,4 +41,10 @@ class Booking extends Model
     {
         return $this->belongsTo(User::class, 'user_id');
     }
+
+    // Định nghĩa quan hệ với nhân viên xử lý
+    public function staff()
+    {
+        return $this->belongsTo(User::class, 'staff_id');
+    }
 }

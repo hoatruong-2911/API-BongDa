@@ -8,6 +8,7 @@ use App\Http\Controllers\Controller;
 use App\Models\Order;
 use App\Models\OrderItem;
 use App\Http\Requests\Api\Oder\StoreOrderRequest;
+use App\Models\Notification;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Http\Request;
@@ -72,6 +73,36 @@ class OrderController extends Controller
     //         'message' => 'Đã chuyển trạng thái đơn hàng sang ' . strtoupper($request->status) . ' rực rỡ!'
     //     ]);
     // }
+
+    // public function updateStatus(Request $request, $id): JsonResponse
+    // {
+    //     $request->validate([
+    //         'status' => 'required|in:pending,confirmed,paid,preparing,completed,cancelled'
+    //     ]);
+
+    //     return DB::transaction(function () use ($request, $id) {
+    //         $order = Order::with('items')->findOrFail($id);
+    //         $oldStatus = $order->status;
+    //         $newStatus = $request->status;
+
+    //         // 🛑 LOGIC TỰ ĐỘNG HOÀN KHO KHI HỦY ĐƠN
+    //         // Nếu trạng thái cũ chưa phải là cancelled, mà trạng thái mới là cancelled
+    //         if ($oldStatus !== 'cancelled' && $newStatus === 'cancelled') {
+    //             foreach ($order->items as $item) {
+    //                 Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+    //             }
+    //         }
+
+    //         $order->status = $newStatus;
+    //         $order->save();
+
+    //         return response()->json([
+    //             'status' => 'success',
+    //             'message' => 'Đã chuyển trạng thái đơn hàng sang ' . strtoupper($newStatus) . ' rực rỡ!'
+    //         ]);
+    //     });
+    // }
+
     public function updateStatus(Request $request, $id): JsonResponse
     {
         $request->validate([
@@ -80,23 +111,27 @@ class OrderController extends Controller
 
         return DB::transaction(function () use ($request, $id) {
             $order = Order::with('items')->findOrFail($id);
+            $user = auth('sanctum')->user(); // Người thực hiện thay đổi trạng thái
+
             $oldStatus = $order->status;
             $newStatus = $request->status;
 
-            // 🛑 LOGIC TỰ ĐỘNG HOÀN KHO KHI HỦY ĐƠN
-            // Nếu trạng thái cũ chưa phải là cancelled, mà trạng thái mới là cancelled
+            // 🛑 LOGIC HOÀN KHO KHI HỦY ĐƠN (Giữ nguyên của bro)
             if ($oldStatus !== 'cancelled' && $newStatus === 'cancelled') {
                 foreach ($order->items as $item) {
                     Product::where('id', $item->product_id)->increment('stock', $item->quantity);
                 }
             }
 
+            // ✅ CẬP NHẬT TRẠNG THÁI & GHI NHẬN NHÂN VIÊN XỬ LÝ
             $order->status = $newStatus;
+            $order->staff_id = $user->id; // 👈 AI THAY ĐỔI TRẠNG THÁI THÌ GHI NHẬN KPI CHO NGƯỜI ĐÓ
             $order->save();
 
             return response()->json([
                 'status' => 'success',
-                'message' => 'Đã chuyển trạng thái đơn hàng sang ' . strtoupper($newStatus) . ' rực rỡ!'
+                'message' => 'Đã chuyển trạng thái đơn hàng sang ' . strtoupper($newStatus) . ' rực rỡ!',
+                'staff_name' => $user->name // Trả thêm tên để Frontend biết ai vừa làm
             ]);
         });
     }
@@ -158,26 +193,44 @@ class OrderController extends Controller
     public function store(StoreOrderRequest $request): JsonResponse
     {
         return DB::transaction(function () use ($request) {
-            $userId = auth('sanctum')->id();
+        // ✅ ĐẶT COMMENT TẠI ĐÂY (Bên trong Closure) để máy nhận diện đúng
+            /** @var \App\Models\User $user */
+            $user = auth('sanctum')->user();
 
-            // 🛑 LOGIC PHÂN LUỒNG TRẠNG THÁI DỰA TRÊN THANH TOÁN
+            if (!$user) {
+                return response()->json(['message' => 'Unauthenticated'], 401);
+            }
+
             $initialStatus = ($request->payment_method === 'qr') ? 'paid' : 'pending';
+
+            // ✅ LOGIC GÁN STAFF_ID (Sử dụng hàm isAdmin đã được nhận diện)
+            $staffId = ($user->isAdmin() || $user->isStaff()) ? $user->id : null;
 
             // 1. Tạo đơn hàng tổng
             $order = Order::create([
                 'order_code'     => $request->order_code,
-                'user_id'        => $userId,
+                'user_id'        => $staffId ? null : $user->id,
+                'staff_id'       => $staffId, // 👈 GHI NHẬN KPI NHÂN VIÊN
                 'customer_name'  => $request->customer_name,
                 'phone'          => $request->phone,
                 'email'          => $request->email,
                 'total_amount'   => $request->total_amount,
-                'payment_method' => $request->payment_method, // 'qr' hoặc 'cash'
+                'payment_method' => $request->payment_method,
                 'status'         => $initialStatus,
-                'order_type'     => 'online',
+                'order_type'     => $staffId ? 'counter' : 'online',
                 'notes'          => $request->notes,
                 'pickup_address' => 'Sân bóng Thanh Hóa Soccer, Ninh Thuận',
             ]);
-
+            // ✅ THÊM LOGIC BẮN THÔNG BÁO TẠI ĐÂY
+            // Chỉ bắn thông báo nếu đây là đơn hàng Online (do khách đặt)
+            // Để dù khách đặt hay Staff đặt hộ, hệ thống đều báo để người làm bếp/kho biết
+            Notification::create([
+                'type'    => 'order_new',
+                'title'   => 'ĐƠN HÀNG MỚI!',
+                'message' => "Hóa đơn #{$order->order_code} vừa được tạo...",
+                'link'    => '/staff/orders',
+                'is_read' => false
+            ]);
             // 🛑 LOGIC ĐỒNG BỘ SANG BẢNG CUSTOMERS RỰC RỠ
             // Tìm theo email, nếu không thấy thì tạo mới, thấy rồi thì lấy ra để update
             $customer = \App\Models\Customer::updateOrCreate(

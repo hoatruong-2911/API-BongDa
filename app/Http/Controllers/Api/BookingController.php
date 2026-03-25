@@ -9,6 +9,8 @@ use Illuminate\Http\Request;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Validation\ValidationException;
 use App\Http\Requests\Api\Booking\StoreBookingRequest;
+use App\Models\Customer;
+use App\Models\Notification;
 use Carbon\Carbon; // Đã thêm Carbon
 
 class BookingController extends Controller
@@ -334,12 +336,19 @@ class BookingController extends Controller
                 'customer_phone' => $request->customer_phone,
                 'notes' => $request->notes,
             ]);
+            Notification::create([
+                'type' => 'booking_new',
+                'title' => 'LỊCH ĐẶT SÂN MỚI!',
+                'message' => "Khách {$request->customer_name} vừa đặt sân vào lúc " . Carbon::parse($request->start_time)->format('H:i d/m'),
+                'link' => '/staff/bookings', // Đường dẫn trang quản lý đặt sân ở frontend
+                'is_read' => false
+            ]);
 
             // 🛑 LOGIC ĐỒNG BỘ SANG BẢNG CUSTOMERS RỰC RỠ
             // Vì Booking có thể không có Email, ta sẽ dùng Phone làm khóa định danh
             // Nếu bro muốn dùng Email, hãy truyền thêm email từ request
             if ($request->customer_phone) {
-                $customer = \App\Models\Customer::updateOrCreate(
+                $customer = Customer::updateOrCreate(
                     ['phone' => $request->customer_phone], // Tìm theo số điện thoại
                     [
                         'name'   => $request->customer_name,
@@ -531,14 +540,66 @@ class BookingController extends Controller
     /**
      * Chuyển đổi trạng thái nhanh từ trang danh sách hoặc chi tiết.
      */
+    // public function changeStatus(Request $request, Booking $booking): JsonResponse
+    // {
+    //     $newStatus = $request->status;
+    //     $user = $request->user(); // Lấy người đang đăng nhập
+
+    //     // Logic tự động điền Audit Log
+    //     $updateData = ['status' => $newStatus];
+
+    //     if ($newStatus === 'approved') {
+    //         $updateData['approved_by'] = $user->id;
+    //         $updateData['approved_at'] = now();
+    //     }
+
+    //     if ($newStatus === 'playing' || $newStatus === 'completed') {
+    //         $updateData['confirmed_by'] = $user->id;
+    //         if ($newStatus === 'completed') {
+    //             $updateData['confirmed_at'] = now();
+    //         }
+    //     }
+
+    //     try {
+    //         $booking->update($updateData);
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => "Đã chuyển trạng thái sang: " . strtoupper($newStatus),
+    //             'data' => $booking
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+    //     }
+    // }
+    /**
+     * Chuyển đổi trạng thái nhanh từ trang danh sách hoặc chi tiết.
+     * Cập nhật thêm staff_id để tính KPI cho nhân viên.
+     */
     public function changeStatus(Request $request, Booking $booking): JsonResponse
     {
         $newStatus = $request->status;
-        $user = $request->user(); // Lấy người đang đăng nhập
+        $user = $request->user(); // Lấy thông tin Staff/Admin đang thực hiện
 
-        // Logic tự động điền Audit Log
-        $updateData = ['status' => $newStatus];
+        // 1. ✅ LOGIC CHẶN BẮT ĐẦU SAI NGÀY (Gộp từ changeStatus2 của bro vào cho gọn)
+        if ($newStatus === 'playing') {
+            $today = now()->toDateString();
+            $bookingDate = \Carbon\Carbon::parse($booking->booking_date)->toDateString();
 
+            if ($today !== $bookingDate) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Không thể bắt đầu! Đơn này đặt cho ngày {$bookingDate}, hôm nay là {$today} ní ơi!"
+                ], 403);
+            }
+        }
+
+        // 2. ✅ CHUẨN BỊ DỮ LIỆU CẬP NHẬT
+        $updateData = [
+            'status'   => $newStatus,
+            'staff_id' => $user->id, // 👈 Ghi nhận nhân viên xử lý vào đây
+        ];
+
+        // Tự động điền Audit Log như cũ của bro
         if ($newStatus === 'approved') {
             $updateData['approved_by'] = $user->id;
             $updateData['approved_at'] = now();
@@ -552,11 +613,13 @@ class BookingController extends Controller
         }
 
         try {
+            // 3. ✅ CẬP NHẬT VÀO DATABASE
             $booking->update($updateData);
+
             return response()->json([
                 'success' => true,
-                'message' => "Đã chuyển trạng thái sang: " . strtoupper($newStatus),
-                'data' => $booking
+                'message' => "Đã chuyển trạng thái sang: " . strtoupper($newStatus) . " (Ghi nhận cho nhân viên: {$user->name})",
+                'data' => $booking->load(['field', 'staff']) // Load thêm staff để Frontend hiển thị nếu cần
             ]);
         } catch (\Exception $e) {
             return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
@@ -615,5 +678,54 @@ class BookingController extends Controller
             'success' => true,
             'message' => 'Đã hủy lượt đặt sân rực rỡ!'
         ]);
+    }
+
+    /**
+     * Lấy lịch bận thực tế của MỘT sân cụ thể để khách hàng chọn giờ.
+     * Loại bỏ các đơn đã Hủy hoặc đã Hoàn thành để giải phóng sân.
+     */
+    public function getFieldSchedule(Request $request): JsonResponse
+    {
+        $request->validate([
+            'field_id' => 'required|exists:fields,id',
+            'date'     => 'required|date_format:Y-m-d',
+        ]);
+
+        $fieldId = $request->query('field_id');
+        $date    = $request->query('date');
+
+        // Lấy các booking đang chiếm dụng sân (Chờ đá, Đang đá, Đã duyệt...)
+        // Loại bỏ 'cancelled' (Hủy) và 'completed' (Hoàn thành)
+        $bookings = Booking::where('field_id', $fieldId)
+            ->whereDate('booking_date', $date)
+            ->whereNotIn('status', ['cancelled', 'completed', 'rejected'])
+            ->select(['id', 'field_id', 'start_time', 'end_time', 'status'])
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data'    => $bookings
+        ]);
+    }
+
+    public function changeStatus2(Request $request, Booking $booking): JsonResponse
+    {
+        $newStatus = $request->input('status');
+
+        // ✅ LOGIC CHẶN BẮT ĐẦU SAI NGÀY
+        if ($newStatus === 'playing') {
+            $today = now()->toDateString();
+            $bookingDate = \Carbon\Carbon::parse($booking->booking_date)->toDateString();
+
+            if ($today !== $bookingDate) {
+                return response()->json([
+                    'success' => false,
+                    'message' => "Không thể bắt đầu! Đơn này đặt cho ngày {$bookingDate}, hôm nay là {$today} ní ơi!"
+                ], 403);
+            }
+        }
+
+        $booking->update(['status' => $newStatus]);
+        return response()->json(['success' => true, 'data' => $booking]);
     }
 }

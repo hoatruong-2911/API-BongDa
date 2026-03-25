@@ -223,4 +223,30 @@ class AttendanceController extends Controller
         $attendance->delete();
         return response()->json(['success' => true, 'message' => 'Xóa chấm công thành công!']);
     }
+
+    public function getMyAttendance(Request $request)
+    {
+        $user = auth()->user();
+        // Tìm hồ sơ Staff
+        $staff = \App\Models\Staff::where('user_id', $user->id)->first();
+
+        if (!$staff) {
+            return response()->json(['success' => false, 'message' => 'Không tìm thấy hồ sơ nhân viên'], 404);
+        }
+
+        // Mặc định lấy chấm công của tháng hiện tại
+        $month = $request->input('month', now()->month);
+        $year = $request->input('year', now()->year);
+
+        $attendances = Attendance::where('staff_id', $staff->id)
+            ->whereMonth('date', $month)
+            ->whereYear('date', $year)
+            ->orderBy('date', 'desc')
+            ->get();
+
+        return response()->json([
+            'success' => true,
+            'data' => $attendances
+        ]);
+    }
 }
