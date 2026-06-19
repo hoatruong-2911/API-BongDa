@@ -70,6 +70,11 @@ Route::middleware('auth:sanctum')->group(function () {
     /* --- 2.1. CUSTOMER & ABOVE (Customer, Staff, Admin) --- */
     Route::middleware('role:customer,staff,admin')->group(function () {
         // Ưu tiên các route cụ thể lên trước
+        // API đặt sân định kỳ cho khách
+        Route::post('/bookings/recurring', [BookingController::class, 'createRecurring']);
+
+        // API duyệt cọc dành cho Admin
+        Route::post('/bookings/confirm-deposit/{recurring_group_id}', [BookingController::class, 'confirmDeposit']);
         Route::patch('bookings/{booking}/status', [BookingController::class, 'changeStatus2']);
         Route::get('/bookings/my-bookings', [BookingController::class, 'myBookings']);
         Route::get('/bookings/{id}', [BookingController::class, 'show']); // Ghi đè show của Resource nếu cần ID cụ thể
@@ -96,6 +101,9 @@ Route::middleware('auth:sanctum')->group(function () {
     /* --- 2.2. ADMIN ONLY, staff --- */
     Route::middleware('role:admin,staff')->group(function () {
 
+        //  TUYẾN ROUTE RIÊNG BIỆT: Dành riêng cho phân hệ Staff Panel gọi lên xử lý tạo đơn tại quầy
+        Route::post('/staff/bookings/create', [BookingController::class, 'store2']);
+        
         // Thêm dòng này vào đầu nhóm role:admin,staff
         // Route::get('fields/live-status', [FieldController::class, 'getLiveStatus']);
         // Route::get('fields/live-status', [FieldController::class, 'getLiveStatus']);

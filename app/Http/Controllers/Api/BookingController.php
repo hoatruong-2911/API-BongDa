@@ -12,34 +12,13 @@ use App\Http\Requests\Api\Booking\StoreBookingRequest;
 use App\Models\Customer;
 use App\Models\Notification;
 use Carbon\Carbon; // Đã thêm Carbon
+use Illuminate\Support\Facades\DB;
+use Illuminate\Support\Str;
+use Illuminate\Support\Facades\Log;
 
 class BookingController extends Controller
 {
-    /**
-     * Lấy lịch sử đặt sân của người dùng hiện tại (Customer) hoặc tất cả (Staff/Admin).
-     */
-    // public function index(Request $request): JsonResponse
-    // {
-    //     $user = $request->user();
 
-    //     // 1. Chỉ Admin và Staff mới xem được TẤT CẢ bookings
-    //     if ($user->isAdmin() || $user->isStaff()) {
-    //         $bookings = Booking::with('user.profile', 'field')
-    //             ->orderBy('start_time', 'desc')
-    //             ->paginate(10);
-    //     } else {
-    //         // 2. Customer chỉ xem booking của chính mình
-    //         $bookings = $user->bookings()
-    //             ->with('field')
-    //             ->orderBy('start_time', 'desc')
-    //             ->paginate(10);
-    //     }
-
-    //     return response()->json([
-    //         'success' => true,
-    //         'data' => $bookings
-    //     ]);
-    // }
 
     public function index(Request $request): JsonResponse
     {
@@ -49,14 +28,14 @@ class BookingController extends Controller
         if ($user->isAdmin() || $user->isStaff()) {
             $bookings = Booking::with(['user.profile', 'field'])
                 ->orderBy('created_at', 'desc')
-                ->paginate(10);
+                ->paginate(7);
         } else {
             // 2. Nếu là Khách hàng: CHỈ lấy đơn của chính mình
             // 🛑 ĐÂY LÀ CHỖ QUAN TRỌNG ĐỂ KHÔNG XEM NHẦM ĐƠN NGƯỜI KHÁC
             $bookings = Booking::where('user_id', $user->id)
                 ->with(['field'])
                 ->orderBy('created_at', 'desc')
-                ->paginate(10);
+                ->paginate(7);
         }
 
         return response()->json([
@@ -65,201 +44,6 @@ class BookingController extends Controller
         ]);
     }
 
-    /**
-     * Tạo một Booking mới (Sử dụng StoreBookingRequest).
-     */
-    // public function store(StoreBookingRequest $request): JsonResponse
-    // {
-    //     try {
-    //         $fieldId = $request->field_id;
-    //         $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
-
-    //         // 1. Ép kiểu và tạo đối tượng Carbon
-    //         // Sử dụng parse kèm múi giờ để đảm bảo không bị sai lệch giờ UTC
-    //         $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
-    //         $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
-
-    //         // 2. Kiểm tra logic thời gian cơ bản
-    //         $now = Carbon::now($appTimezone)->subMinutes(5);
-
-    //         if ($fullStartTime->lessThan($now)) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Thời gian bắt đầu không được ở quá khứ.',
-    //                 'errors' => ['start_time' => ['Thời gian đã trôi qua.']]
-    //             ], 422);
-    //         }
-
-    //         if ($fullEndTime->lessThanOrEqualTo($fullStartTime)) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Thời gian kết thúc phải sau thời gian bắt đầu.',
-    //                 'errors' => ['end_time' => ['Dữ liệu thời gian không hợp lệ.']]
-    //             ], 422);
-    //         }
-
-    //         // 3. Trích xuất dữ liệu để lưu vào DB
-    //         $bookingDate = $fullStartTime->toDateString();
-    //         $startTimeStr = $fullStartTime->toTimeString(); // HH:mm:ss
-    //         $endTimeStr = $fullEndTime->toTimeString();     // HH:mm:ss
-
-    //         // 4. Kiểm tra xung đột lịch (Giữ nguyên logic của bạn)
-    //         $conflict = Booking::where('field_id', $fieldId)
-    //             ->whereDate('booking_date', $bookingDate)
-    //             ->where(function ($query) use ($startTimeStr, $endTimeStr) {
-    //                 $query->where(function ($q) use ($startTimeStr, $endTimeStr) {
-    //                     $q->where('start_time', '<', $endTimeStr)
-    //                         ->where('end_time', '>', $startTimeStr);
-    //                 });
-    //             })
-    //             ->whereIn('status', ['pending', 'confirmed', 'playing'])
-    //             ->exists();
-
-    //         if ($conflict) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Sân bóng đã được đặt trong khoảng thời gian này.',
-    //                 'errors' => ['booking' => ['Trùng lịch sân.']]
-    //             ], 422);
-    //         }
-
-    //         // 5. TÍNH TOÁN CHÍNH XÁC (SỬA LỖI GIÁ TRỊ ÂM)
-    //         $field = Field::findOrFail($fieldId);
-
-    //         // Sử dụng diffInMinutes để lấy số phút dương tuyệt đối giữa 2 mốc giờ
-    //         $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
-    //         $durationHours = $durationMinutes / 60;
-
-    //         // Logic giá: tăng 20% nếu sau 20:00 (Sử dụng đơn giá gốc của sân)
-    //         $basePrice = $field->price;
-    //         $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
-
-    //         // Tổng tiền = Đơn giá (đã tính phụ phí) * Số giờ đá
-    //         $totalAmount = $finalPricePerHour * $durationHours;
-
-    //         // 6. Tạo Booking với các giá trị đã chuẩn hóa
-    //         $booking = $request->user()->bookings()->create([
-    //             'field_id' => $fieldId,
-    //             'booking_date' => $bookingDate,
-    //             'start_time' => $startTimeStr,
-    //             'end_time' => $endTimeStr,
-    //             'duration' => $durationMinutes, // Lưu số phút đá (ví dụ: 90) để dễ thống kê
-    //             'total_amount' => round($totalAmount), // Lưu số tiền dương (ví dụ: 1125000)
-    //             'status' => 'pending',
-    //             'customer_name' => $request->customer_name,
-    //             'customer_phone' => $request->customer_phone,
-    //             'notes' => $request->notes,
-    //             // Các cột approved_by, confirmed_by sẽ mặc định là NULL khi mới tạo
-    //         ]);
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => 'Đặt sân thành công!',
-    //             'data' => $booking->load('field')
-    //         ], 201);
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'success' => false,
-    //             'message' => 'Lỗi hệ thống: ' . $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
-
-    /**
-     * Tạo một Booking mới (Sử dụng StoreBookingRequest).
-     */
-    // public function store(StoreBookingRequest $request): JsonResponse
-    // {
-    //     try {
-    //         $fieldId = $request->field_id;
-    //         $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
-
-    //         // 1. Ép kiểu và tạo đối tượng Carbon chính xác theo múi giờ hệ thống
-    //         $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
-    //         $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
-
-    //         // 2. 🛑 CHẶN THỜI GIAN QUÁ KHỨ CHẶT CHẼ
-    //         // Lấy thời gian hiện tại của Việt Nam
-    //         $now = Carbon::now($appTimezone);
-
-    //         // Kiểm tra: Nếu giờ bắt đầu nhỏ hơn giờ hiện tại (quá khứ)
-    //         if ($fullStartTime->lessThan($now)) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Giờ này đã qua rồi bro ơi! Bây giờ đã là ' . $now->format('H:i') . ' ngày ' . $now->format('d/m/Y') . '.',
-    //                 'errors' => ['start_time' => ['Thời gian bắt đầu không được ở quá khứ.']]
-    //             ], 422);
-    //         }
-
-    //         // Kiểm tra logic: Giờ kết thúc phải sau giờ bắt đầu
-    //         if ($fullEndTime->lessThanOrEqualTo($fullStartTime)) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Thời gian kết thúc phải sau thời gian bắt đầu.',
-    //                 'errors' => ['end_time' => ['Dữ liệu thời gian không hợp lệ.']]
-    //             ], 422);
-    //         }
-
-    //         // 3. Trích xuất dữ liệu để lưu vào DB
-    //         $bookingDate = $fullStartTime->toDateString();
-    //         $startTimeStr = $fullStartTime->toTimeString(); // HH:mm:ss
-    //         $endTimeStr = $fullEndTime->toTimeString();     // HH:mm:ss
-
-    //         // 4. Kiểm tra xung đột lịch (Giữ nguyên logic của bạn)
-    //         $conflict = Booking::where('field_id', $fieldId)
-    //             ->whereDate('booking_date', $bookingDate)
-    //             ->where(function ($query) use ($startTimeStr, $endTimeStr) {
-    //                 $query->where(function ($q) use ($startTimeStr, $endTimeStr) {
-    //                     $q->where('start_time', '<', $endTimeStr)
-    //                         ->where('end_time', '>', $startTimeStr);
-    //                 });
-    //             })
-    //             ->whereIn('status', ['pending', 'confirmed', 'playing'])
-    //             ->exists();
-
-    //         if ($conflict) {
-    //             return response()->json([
-    //                 'success' => false,
-    //                 'message' => 'Sân bóng đã được đặt trong khoảng thời gian này.',
-    //                 'errors' => ['booking' => ['Trùng lịch sân.']]
-    //             ], 422);
-    //         }
-
-    //         // 5. TÍNH TOÁN CHI PHÍ (Giữ nguyên logic của bạn)
-    //         $field = Field::findOrFail($fieldId);
-    //         $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
-    //         $durationHours = $durationMinutes / 60;
-
-    //         $basePrice = $field->price;
-    //         $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
-    //         $totalAmount = $finalPricePerHour * $durationHours;
-
-    //         // 6. Tạo Booking (Dùng Transaction để an toàn nếu cần)
-    //         $booking = $request->user()->bookings()->create([
-    //             'field_id' => $fieldId,
-    //             'booking_date' => $bookingDate,
-    //             'start_time' => $startTimeStr,
-    //             'end_time' => $endTimeStr,
-    //             'duration' => $durationMinutes,
-    //             'total_amount' => round($totalAmount),
-    //             'status' => 'pending',
-    //             'customer_name' => $request->customer_name,
-    //             'customer_phone' => $request->customer_phone,
-    //             'notes' => $request->notes,
-    //         ]);
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => 'Đặt sân thành công rực rỡ!',
-    //             'data' => $booking->load('field')
-    //         ], 201);
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'success' => false,
-    //             'message' => 'Lỗi hệ thống: ' . $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
 
     public function store(StoreBookingRequest $request): JsonResponse
     {
@@ -314,27 +98,50 @@ class BookingController extends Controller
                 ], 422);
             }
 
-            // 5. TÍNH TOÁN CHI PHÍ
+            // 5. TÍNH TOÁN CHI PHÍ & TIỀN CỌC
             $field = Field::findOrFail($fieldId);
             $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
+
+            // 🛑 VALIDATE THỜI GIAN TỐI THIỂU: Yêu cầu đặt sân ít nhất 1 giờ (60 phút)
+            if ($durationMinutes < 60) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Thời gian đặt sân tối thiểu phải là 1 giờ (60 phút).',
+                    'errors' => ['end_time' => ['Thời gian đặt sân quá ngắn. Vui lòng chọn thời gian kết thúc xa hơn.']]
+                ], 422);
+            }
+
             $durationHours = $durationMinutes / 60;
 
             $basePrice = $field->price;
             $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
             $totalAmount = $finalPricePerHour * $durationHours;
 
-            // 6. Tạo Booking
+            // 🚀 TÍNH TOÁN TIỀN CỌC: Bằng 30% tổng chi phí của buổi đá lẻ
+            $depositAmount = $totalAmount * 0.30;
+
+            // 6. Tạo Booking (Bổ sung lưu thông tin tiền cọc)
             $booking = $request->user()->bookings()->create([
-                'field_id' => $fieldId,
-                'booking_date' => $bookingDate,
-                'start_time' => $startTimeStr,
-                'end_time' => $endTimeStr,
-                'duration' => $durationMinutes,
-                'total_amount' => round($totalAmount),
-                'status' => 'pending',
-                'customer_name' => $request->customer_name,
-                'customer_phone' => $request->customer_phone,
-                'notes' => $request->notes,
+                'field_id'        => $fieldId,
+                'booking_date'    => $bookingDate,
+                'start_time'      => $startTimeStr,
+                'end_time'        => $endTimeStr,
+                'duration'        => $durationMinutes,
+                'total_amount'    => round($totalAmount),
+                'deposit_amount'  => round($depositAmount), // 🚀 BỔ SUNG: Lưu số tiền cọc 30%
+                'status'          => 'pending',
+                'payment_status'  => 'unpaid',              // 🚀 BỔ SUNG: Đơn mới tạo mặc định chưa trả tiền cọc
+                'customer_name'   => $request->customer_name,
+                'customer_phone'  => $request->customer_phone,
+                'notes'           => $request->notes,
+            ]);
+
+            Notification::create([
+                'type' => 'booking_new',
+                'title' => 'LỊCH ĐẶT SÂN MỚI!',
+                'message' => "Khách {$request->customer_name} vừa đặt sân vào lúc " . Carbon::parse($request->start_time)->format('H:i d/m'),
+                'link' => '/staff/bookings',
+                'is_read' => false
             ]);
             Notification::create([
                 'type' => 'booking_new',
@@ -345,14 +152,12 @@ class BookingController extends Controller
             ]);
 
             // 🛑 LOGIC ĐỒNG BỘ SANG BẢNG CUSTOMERS RỰC RỠ
-            // Vì Booking có thể không có Email, ta sẽ dùng Phone làm khóa định danh
-            // Nếu bro muốn dùng Email, hãy truyền thêm email từ request
             if ($request->customer_phone) {
                 $customer = Customer::updateOrCreate(
-                    ['phone' => $request->customer_phone], // Tìm theo số điện thoại
+                    ['phone' => $request->customer_phone],
                     [
                         'name'   => $request->customer_name,
-                        'email'  => $request->email ?? $request->customer_phone . '@guest.com', // Tạo email giả nếu thiếu
+                        'email'  => $request->email ?? $request->customer_phone . '@guest.com',
                         'status' => 'active',
                     ]
                 );
@@ -371,7 +176,7 @@ class BookingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => 'Đặt sân thành công rực rỡ!',
+                'message' => 'Đặt sân lẻ thành công rực rỡ! Vui lòng thực hiện chuyển khoản cọc.',
                 'data' => $booking->load('field')
             ], 201);
         } catch (\Exception $e) {
@@ -383,108 +188,239 @@ class BookingController extends Controller
     }
 
     /**
-     * Lấy chi tiết một booking.
+     * 🚀 HÀM ĐẶT SÂN RIÊNG CHO STAFF TẠI QUẦY (Walk-in / Staff Panel)
+     * Tránh ảnh hưởng hoàn toàn đến luồng đặt của Khách hàng từ xa
      */
-    public function show($id): JsonResponse // Đổi Booking $booking thành $id để query tươi mới hoàn toàn
-    {
-        // 🛑 DÙNG TRUY VẤN TƯƠI ĐỂ ÉP NẠP FIELD
-        $booking = Booking::with(['field', 'user.profile'])->find($id);
-
-        if (!$booking) {
-            return response()->json([
-                'success' => false,
-                'message' => 'Không tìm thấy hóa đơn ID: ' . $id
-            ], 404);
-        }
-
-        $user = request()->user();
-        // Logic kiểm tra quyền của bro (giữ nguyên)
-        if (!$user->isAdmin() && !$user->isStaff() && $booking->user_id !== $user->id) {
-            return response()->json(['message' => 'Bạn không có quyền xem đơn này.'], 403);
-        }
-
-        return response()->json([
-            'success' => true,
-            'data' => $booking // Trả về object đã được nạp Field rực rỡ
-        ]);
-    }
-
-    // public function getSchedule(Field $field, Request $request): JsonResponse
+    // public function store2(Request $request): JsonResponse
     // {
-    //     $request->validate(['date' => 'required|date_format:Y-m-d']);
-    //     $date = $request->date;
-    //     $basePrice = $field->price; // Lấy đúng giá của sân đang chọn
+    //     try {
+    //         $user = $request->user(); // Nhân viên hoặc Admin đang trực ca quầy
+    //         $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
 
-    //     $schedule = [];
-    //     $startTimeMinutes = 8 * 60; // 08:00
-    //     $endTimeMinutes = 23 * 60;  // 23:00
-    //     $slotDuration = 90;
+    //         // Parse cấu trúc thời gian từ Payload của Staff gửi sang
+    //         $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
+    //         $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
 
-    //     for ($time = $startTimeMinutes; $time < $endTimeMinutes; $time += $slotDuration) {
-    //         $start = sprintf('%02d:%02d', floor($time / 60), $time % 60);
-    //         $end = sprintf('%02d:%02d', floor(($time + $slotDuration) / 60), ($time + $slotDuration) % 60);
+    //         $bookingDate = $fullStartTime->toDateString();
+    //         $startTimeStr = $fullStartTime->toTimeString();
+    //         $endTimeStr = $fullEndTime->toTimeString();
 
-    //         // NGHIỆP VỤ GIÁ:
-    //         $currentPrice = $basePrice;
+    //         // Tính toán thời lượng sử dụng sân
+    //         $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
+    //         $durationHours = $durationMinutes / 60;
 
-    //         // Nếu khung giờ bắt đầu từ 20:00 trở đi, cộng thêm phụ phí đêm (ví dụ +20%)
-    //         if ($time >= 20 * 60) {
-    //             $currentPrice = $basePrice * 1.2;
+    //         // Truy xuất thông tin giá tiền cấu hình của Sân bóng
+    //         $field = Field::findOrFail($request->field_id);
+    //         $basePrice = $field->price;
+
+    //         // Tự động tính phụ phí ca đêm 20% nếu giờ bắt đầu vào sân từ 20h kịch trần trở đi
+    //         $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
+    //         $totalAmount = $finalPricePerHour * $durationHours;
+
+    //         // 🚀 BÓC TÁCH DÒNG TIỀN QUẦY: Hứng chuẩn chuỗi fully_paid / partial_paid từ Staff gửi lên
+    //         $paymentStatus = $request->payment_status ?? 'unpaid';
+
+    //         // Xử lý tính toán lượng tiền đã thu thực tế để đối soát đúng với Index Admin
+    //         if ($paymentStatus === 'fully_paid') {
+    //             $depositAmount = $totalAmount; // Nếu trả đủ 100% thì gán lượng tiền thu bằng tổng tiền bill
+    //         } else if ($paymentStatus === 'partial_paid') {
+    //             $depositAmount = $totalAmount * 0.30; // Nếu cọc 30% thì tính lượng cọc tạm giữ chỗ
+    //         } else {
+    //             $depositAmount = 0;
     //         }
 
-    //         $isBooked = Booking::where('field_id', $field->id)
-    //             ->where('booking_date', $date)
-    //             ->where('start_time', $start)
-    //             ->whereIn('status', ['pending', 'confirmed', 'playing'])
-    //             ->exists();
+    //         // Tiến hành lưu thông tin đặt sân trực tiếp xuống cơ sở dữ liệu MySQL
+    //         $booking = Booking::create([
+    //             'user_id'         => $user->id, // Ghi nhận ID tài khoản xử lý tạo đơn
+    //             'field_id'        => $request->field_id,
+    //             'booking_date'    => $bookingDate,
+    //             'start_time'      => $startTimeStr,
+    //             'end_time'        => $endTimeStr,
+    //             'duration'        => $durationMinutes,
+    //             'total_amount'    => round($totalAmount),
+    //             'deposit_amount'  => round($depositAmount), // Lưu mốc tiền thu thực tế để phân biệt Tag Index
+    //             'payment_status'  => $paymentStatus,        // Lưu chuẩn xác 'fully_paid' hoặc 'partial_paid'
+    //             'customer_name'   => $request->customer_name,
+    //             'customer_phone'  => $request->customer_phone,
+    //             'notes'           => $request->notes,
+    //             'status'          => $request->status ?? 'approved', // Mặc định Staff tạo đá lẻ quầy là duyệt luôn hoặc lên sân
+    //         ]);
 
-    //         $schedule[] = [
-    //             'start_time' => $start,
-    //             'end_time' => $end,
-    //             'price' => round($currentPrice), // Giá đã tính theo từng sân & khung giờ
-    //             'status' => $isBooked ? 'booked' : 'available',
-    //         ];
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Staff tạo đơn đặt sân tại quầy và ghi nhận dòng tiền thành công rực rỡ!',
+    //             'data' => $booking->load('field')
+    //         ], 201);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Lỗi hệ thống xử lý lưu đơn tại quầy: ' . $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
+    public function store2(Request $request): JsonResponse
+    {
+        try {
+            $user = $request->user();
+            $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
+
+            $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
+            $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
+
+            $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
+            $durationHours = $durationMinutes / 60;
+
+            $field = Field::findOrFail($request->field_id);
+            $totalAmount = $field->price * $durationHours;
+            if ($fullStartTime->hour >= 20) {
+                $totalAmount = $totalAmount * 1.2; // Phụ phí ca đêm 20%
+            }
+
+            // Hứng hình thức thanh toán từ Frontend quầy gửi lên (full hoặc deposit)
+            $paymentType = $request->payment_type ?? 'full';
+
+            // 🚀 ĐÃ CẢI TIẾN LOGIC DÒNG TIỀN THEO ĐÚNG KẾ HOẠCH CỦA NÍ:
+            if ($paymentType === 'deposit') {
+                $paymentStatus = 'partial_paid';
+                $depositAmount = $totalAmount * 0.30; // Tiền cọc giữ chỗ = 30%
+                $amountPaid    = 0; // 🚀 SỬA LẠI: Trả cọc thì KHÔNG lưu vào cột amount_paid nữa
+            } else {
+                $paymentStatus = 'fully_paid';
+                $depositAmount = 0;                   // Trả đủ rồi thì khoản nợ cọc về bằng 0
+                $amountPaid    = $totalAmount;        // Quầy thực thu trọn gói 100% tiền sân
+            }
+
+            $booking = Booking::create([
+                'user_id'         => $user->id,
+                'field_id'        => $request->field_id,
+                'staff_id'        => $user->id, // Ghi nhận nhân viên quầy trực tiếp xử lý
+                'booking_date'    => $fullStartTime->toDateString(),
+                'start_time'      => $fullStartTime->toTimeString(),
+                'end_time'        => $fullEndTime->toTimeString(),
+                'duration'        => $durationMinutes,
+                'total_amount'    => round($totalAmount),
+                'deposit_amount'  => round($depositAmount), // Phản ánh đúng bản chất luồng cọc
+                'amount_paid'     => round($amountPaid),     // 🚀 CỘT MỚI: Đã được điền số tiền thật kịch trần!
+                'payment_status'  => $paymentStatus,
+                'customer_name'   => $request->customer_name,
+                'customer_phone'  => $request->customer_phone,
+                'notes'           => $request->notes,
+                'status'          => $request->status ?? 'approved',
+            ]);
+
+            return response()->json([
+                'success' => true,
+                'message' => 'Staff tạo đơn tại quầy và phân rã dòng tiền CSDL thành công rực rỡ!',
+                'data' => $booking->load('field')
+            ], 201);
+        } catch (\Exception $e) {
+            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+        }
+    }
+    /**
+     * Lấy chi tiết một booking.
+     */
+    // public function show($id): JsonResponse // Đổi Booking $booking thành $id để query tươi mới hoàn toàn
+    // {
+    //     // 🛑 DÙNG TRUY VẤN TƯƠI ĐỂ ÉP NẠP FIELD
+    //     $booking = Booking::with(['field', 'user.profile'])->find($id);
+
+    //     if (!$booking) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Không tìm thấy hóa đơn ID: ' . $id
+    //         ], 404);
     //     }
 
-    //     return response()->json(['success' => true, 'data' => $schedule]);
+    //     $user = request()->user();
+    //     // Logic kiểm tra quyền của bro (giữ nguyên)
+    //     if (!$user->isAdmin() && !$user->isStaff() && $booking->user_id !== $user->id) {
+    //         return response()->json(['message' => 'Bạn không có quyền xem đơn này.'], 403);
+    //     }
+
+    //     return response()->json([
+    //         'success' => true,
+    //         'data' => $booking // Trả về object đã được nạp Field rực rỡ
+    //     ]);
     // }
+    public function show($id): JsonResponse
+    {
+        try {
+            // 🚀 ĐÃ CẬP NHẬT: Load đầy đủ quan hệ field để tránh lỗi null tên sân ngoài giao diện
+            $booking = Booking::with(['field', 'user.profile'])->findOrFail($id);
+
+            return response()->json([
+                'success' => true,
+                'data' => $booking
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy đơn đặt sân hoặc lỗi hệ thống: ' . $e->getMessage()
+            ], 404);
+        }
+    }
+
+    /**
+     * Lấy lịch các ca trống của một sân, được tối ưu để hiển thị linh hoạt trên frontend.
+     * - Sinh ra các ca có thể bắt đầu mỗi 30 phút.
+     * - Kiểm tra tính khả dụng cho một ca mặc định 90 phút từ thời điểm bắt đầu đó.
+     * - Tối ưu hiệu suất bằng cách chỉ query DB một lần.
+     */
     public function getSchedule(Field $field, Request $request): JsonResponse
     {
         $request->validate(['date' => 'required|date_format:Y-m-d']);
         $date = $request->date;
         $basePrice = $field->price;
+        $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
+
+        // 1. Lấy tất cả các booking đang chiếm sân trong ngày để tối ưu, tránh query trong vòng lặp
+        $existingBookings = Booking::where('field_id', $field->id)
+            ->whereDate('booking_date', $date)
+            ->whereIn('status', ['pending', 'approved', 'confirmed', 'playing', 'paid']) // Các trạng thái chiếm sân
+            ->select('start_time', 'end_time')
+            ->get();
 
         $schedule = [];
-        $startTimeMinutes = 8 * 60; // 08:00
-        $endTimeMinutes = 23 * 60;  // 23:00
-        $slotDuration = 90;
+        $operatingStartHour = 8;  // Sân bắt đầu hoạt động lúc 8h
+        $operatingEndHour = 23; // Sân kết thúc hoạt động lúc 23h
+        $slotIncrement = 30; // Bước nhảy 30 phút
+        $defaultDuration = 90; // Ca mặc định là 90 phút
 
-        for ($time = $startTimeMinutes; $time < $endTimeMinutes; $time += $slotDuration) {
-            // Tạo chuỗi thời gian chuẩn MySQL (HH:mm:ss)
-            $startWithSeconds = sprintf('%02d:%02d:00', floor($time / 60), $time % 60);
-            $endWithSeconds = sprintf('%02d:%02d:00', floor(($time + $slotDuration) / 60), ($time + $slotDuration) % 60);
+        $now = Carbon::now($appTimezone);
+        $requestedDate = Carbon::parse($date, $appTimezone)->startOfDay();
 
-            $startDisplay = substr($startWithSeconds, 0, 5);
-            $endDisplay = substr($endWithSeconds, 0, 5);
+        // 2. Vòng lặp sinh các ca (slots) với bước nhảy 30 phút
+        for ($hour = $operatingStartHour; $hour < $operatingEndHour; $hour++) {
+            for ($minute = 0; $minute < 60; $minute += $slotIncrement) {
+                $slotStart = $requestedDate->copy()->setTime($hour, $minute);
 
-            // 🛑 LOGIC QUÉT ĐƠN: Đã loại bỏ 'completed' nếu bro muốn ca đá xong là trống ngay
-            $isBooked = Booking::where('field_id', $field->id)
-                ->whereDate('booking_date', $date)
-                ->where(function ($query) use ($startWithSeconds, $endWithSeconds) {
-                    $query->where('start_time', '<', $endWithSeconds)
-                        ->where('end_time', '>', $startWithSeconds);
-                })
-                // Chỉ tính những đơn thực sự đang chiếm sân
-                // Nếu bro muốn đá xong (completed) là sân trống thì xóa 'completed' khỏi mảng dưới đây
-                ->whereIn('status', ['pending', 'approved', 'confirmed', 'playing'])
-                ->exists();
+                // Chỉ hiển thị các ca trong tương lai (cho phép đặt trước 5 phút)
+                if ($slotStart->lessThan($now->copy()->subMinutes(5))) {
+                    continue;
+                }
 
-            $schedule[] = [
-                'start_time' => $startDisplay,
-                'end_time' => $endDisplay,
-                'price' => round(($time >= 20 * 60) ? $basePrice * 1.2 : $basePrice),
-                'status' => $isBooked ? 'booked' : 'available',
-            ];
+                $slotEnd = $slotStart->copy()->addMinutes($defaultDuration);
+
+                // Không tạo ca nếu giờ kết thúc vượt quá giờ hoạt động
+                if ($slotEnd->hour >= $operatingEndHour && $slotEnd->minute > 0) {
+                    continue;
+                }
+
+                // 3. Kiểm tra xung đột với các booking đã có (logic trong memory, không query DB)
+                $isBooked = $this->isSlotOverlapping($slotStart, $slotEnd, $existingBookings, $date, $appTimezone);
+
+                // 4. Tính giá cho ca 90 phút
+                $hourlyPrice = ($slotStart->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
+                $slotPrice = $hourlyPrice * ($defaultDuration / 60);
+
+                $schedule[] = [
+                    'start_time' => $slotStart->format('H:i'),
+                    'end_time'   => $slotEnd->format('H:i'),
+                    'price'      => round($slotPrice),
+                    'status'     => $isBooked ? 'booked' : 'available',
+                ];
+            }
         }
 
         return response()->json(['success' => true, 'data' => $schedule]);
@@ -493,52 +429,131 @@ class BookingController extends Controller
     /**
      * Cập nhật thông tin đặt sân (Dành cho Admin).
      */
-    public function update(Request $request, Booking $booking): JsonResponse
+
+    // public function update(Request $request, $id): JsonResponse
+    // {
+    //     try {
+    //         $booking = Booking::findOrFail($id);
+    //         $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
+
+    //         // 🚀 Đã đồng bộ: Nhận chuỗi thời gian an toàn từ Frontend gửi lên
+    //         $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
+    //         $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
+
+    //         $bookingDate = $fullStartTime->toDateString();
+    //         $startTimeStr = $fullStartTime->toTimeString();
+    //         $endTimeStr = $fullEndTime->toTimeString();
+
+    //         // Tính toán lại số phút và số tiền phòng trường hợp Admin sửa giờ đá
+    //         $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
+    //         $durationHours = $durationMinutes / 60;
+
+    //         $field = Field::findOrFail($request->field_id);
+    //         $basePrice = $field->price;
+    //         $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
+    //         $totalAmount = $finalPricePerHour * $durationHours;
+
+    //         // Tự động tính lại hạn mức cọc 30% phòng khi Admin thay đổi khung giờ
+    //         $depositAmount = $totalAmount * 0.30;
+
+    //         // Cập nhật dữ liệu xuống MySQL
+    //         $booking->update([
+    //             'field_id'        => $request->field_id,
+    //             'booking_date'    => $bookingDate,
+    //             'start_time'      => $startTimeStr,
+    //             'end_time'        => $endTimeStr,
+    //             'duration'        => $durationMinutes,
+    //             'total_amount'    => round($totalAmount),
+    //             'deposit_amount'  => round($depositAmount), // 🚀 BỔ SUNG: Lưu tiền cọc cập nhật
+    //             'payment_status'  => $request->payment_status ?? $booking->payment_status, // 🚀 BỔ SUNG: Trạng thái cọc
+    //             'customer_name'   => $request->customer_name,
+    //             'customer_phone'  => $request->customer_phone,
+    //             'notes'           => $request->notes,
+    //             'status'          => $request->status,
+    //             'approved_by'     => $request->approved_by,
+    //             'confirmed_by'    => $request->confirmed_by,
+    //         ]);
+
+    //         return response()->json([
+    //             'success' => true,
+    //             'message' => 'Cập nhật đơn đặt sân thành công rực rỡ!',
+    //             'data' => $booking->load('field')
+    //         ]);
+    //     } catch (\Exception $e) {
+    //         return response()->json([
+    //             'success' => false,
+    //             'message' => 'Lỗi hệ thống khi sửa đơn: ' . $e->getMessage()
+    //         ], 500);
+    //     }
+    // }
+    public function update(Request $request, $id): JsonResponse
     {
         try {
+            $booking = Booking::findOrFail($id);
             $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
 
-            // Xác định rõ định dạng gửi lên để Carbon không parse sai
-            $fullStartTime = Carbon::createFromFormat('Y-m-d H:i:s', $request->start_time, $appTimezone);
-            $fullEndTime = Carbon::createFromFormat('Y-m-d H:i:s', $request->end_time, $appTimezone);
+            // Ép kiểu thời gian an toàn từ chuỗi Full DateTime Frontend gửi lên
+            $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
+            $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
 
-            if ($fullEndTime->lessThanOrEqualTo($fullStartTime)) {
-                return response()->json(['success' => false, 'message' => 'Thời gian kết thúc phải sau thời gian bắt đầu.'], 422);
-            }
+            $bookingDate = $fullStartTime->toDateString();
+            $startTimeStr = $fullStartTime->toTimeString();
+            $endTimeStr = $fullEndTime->toTimeString();
 
-            $field = Field::findOrFail($request->field_id);
             $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
             $durationHours = $durationMinutes / 60;
 
+            $field = Field::findOrFail($request->field_id);
             $basePrice = $field->price;
-            $finalPrice = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
-            $totalAmount = $finalPrice * $durationHours;
+            $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
+            $totalAmount = $finalPricePerHour * $durationHours;
 
+            // 🚀 ĐÃ SỬA CHUẨN: Đồng bộ ENUM giá trị dòng tiền của Database
+            $paymentStatus = $request->payment_status ?? $booking->payment_status;
+
+            // Fix lỗi đổi chữ 'paid' thành 'fully_paid' cho khớp ENUM của hệ thống
+            if ($paymentStatus === 'paid') {
+                $paymentStatus = 'fully_paid';
+            }
+
+            // Giữ nguyên số tiền cọc 30% để làm mốc đối soát ở trang danh sách, không dọn về 0 nữa!
+            $depositAmount = $totalAmount * 0.30;
+
+            // Cập nhật dữ liệu trực tiếp xuống MySQL
             $booking->update([
-                'field_id'       => $request->field_id,
-                'customer_name'  => $request->customer_name,
-                'customer_phone' => $request->customer_phone,
-                'booking_date'   => $fullStartTime->toDateString(),
-                'start_time'     => $fullStartTime->toTimeString(),
-                'end_time'       => $fullEndTime->toTimeString(),
-                'duration'       => $durationMinutes,
-                'total_amount'   => round($totalAmount),
-                'status'         => (string) ($request->status ?? $booking->status),
-                'notes'          => $request->notes,
-                // Ép kiểu về số cho database bigint
-                'approved_by'    => $request->approved_by ? (int)$request->approved_by : null,
-                'confirmed_by'   => $request->confirmed_by ? (int)$request->confirmed_by : null,
+                'field_id'        => $request->field_id,
+                'booking_date'    => $bookingDate,
+                'start_time'      => $startTimeStr,
+                'end_time'        => $endTimeStr,
+                'duration'        => $durationMinutes,
+                'total_amount'    => round($totalAmount),
+                'deposit_amount'  => round($depositAmount),
+                'payment_status'  => $paymentStatus, // Lưu chuỗi chuẩn 'fully_paid', 'partial_paid' hoặc 'unpaid'
+                'customer_name'   => $request->customer_name,
+                'customer_phone'  => $request->customer_phone,
+                'notes'           => $request->notes,
+                'status'          => $request->status,
+                'approved_by'     => $request->approved_by,
+                'confirmed_by'    => $request->confirmed_by,
             ]);
 
-            return response()->json(['success' => true, 'message' => 'Cập nhật thành công!']);
+            return response()->json([
+                'success' => true,
+                'message' => 'Admin cập nhật và sửa đổi trạng thái đơn rực rỡ!',
+                'data' => $booking->load('field')
+            ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => 'Lỗi: ' . $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi hệ thống khi sửa đơn: ' . $e->getMessage()
+            ], 500);
         }
     }
 
 
     /**
      * Chuyển đổi trạng thái nhanh từ trang danh sách hoặc chi tiết.
+     * Cập nhật thêm staff_id để tính KPI cho nhân viên.
      */
     // public function changeStatus(Request $request, Booking $booking): JsonResponse
     // {
@@ -727,5 +742,146 @@ class BookingController extends Controller
 
         $booking->update(['status' => $newStatus]);
         return response()->json(['success' => true, 'data' => $booking]);
+    }
+
+    /**
+     * Hàm hỗ trợ kiểm tra một slot có bị trùng với các booking đã có hay không.
+     */
+    private function isSlotOverlapping(Carbon $slotStart, Carbon $slotEnd, $existingBookings, string $date, string $timezone): bool
+    {
+        foreach ($existingBookings as $booking) {
+            $bookingStart = Carbon::parse($date . ' ' . $booking->start_time, $timezone);
+            $bookingEnd = Carbon::parse($date . ' ' . $booking->end_time, $timezone);
+
+            // Công thức kiểm tra 2 khoảng thời gian giao nhau: (StartA < EndB) and (EndA > StartB)
+            if ($slotStart->lt($bookingEnd) && $slotEnd->gt($bookingStart)) {
+                return true; // Nếu đã trùng, trả về true ngay
+            }
+        }
+        return false;
+    }
+
+    // API XÁC NHẬN CỌC CHO ADMIN
+
+
+    // API XÁC NHẬN CỌC CHO ADMIN (CẢ LẺ VÀ CHUỖI ĐỊNH KỲ)
+    public function confirmDeposit($id_or_group)
+    {
+        // 1. Thử tìm xem đây có phải là một đơn lẻ hợp lệ dựa theo ID hay không
+        $isSingleBooking = Booking::where('id', $id_or_group)->exists();
+
+        if ($isSingleBooking) {
+            // 👉 LUỒNG ĐƠN LẺ: Tìm đúng đơn theo ID và đang chưa thanh toán cọc
+            $bookings = Booking::where('id', $id_or_group)->where('payment_status', 'unpaid');
+        } else {
+            // 👉 LUỒNG ĐỊNH KỲ: Tìm theo mã chuỗi recurring_group_id và đang chưa thanh toán cọc
+            $bookings = Booking::where('recurring_group_id', $id_or_group)->where('payment_status', 'unpaid');
+        }
+
+        // Nếu kiểm tra không có bản ghi nào thỏa mãn điều kiện
+        if ($bookings->count() == 0) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không tìm thấy lượt đặt sân này, hoặc hóa đơn đã được xử lý thanh toán cọc trước đó.'
+            ], 404);
+        }
+
+        // Cập nhật trạng thái đồng loạt sang "Đã cọc 30%" và "Kích hoạt lịch đã duyệt"
+        $bookings->update([
+            'payment_status' => 'partial_paid',
+            'status' => 'approved'
+        ]);
+
+        return response()->json([
+            'success' => true,
+            'message' => "Đã xác nhận kích hoạt cọc giữ chỗ thành công cho đơn/chuỗi: {$id_or_group}"
+        ]);
+    }
+    public function createRecurring(Request $request): JsonResponse
+    {
+        $request->validate([
+            'field_id'         => 'required|exists:fields,id',
+            'start_date'       => 'required|date|after_or_equal:today',
+            'number_of_months' => 'required|in:1,3,6',
+            'start_time'       => 'required|date_format:H:i',
+            'end_time'         => 'required|date_format:H:i|after:start_time',
+        ]);
+
+        $field = Field::find($request->field_id);
+        $startDate = Carbon::parse($request->start_date);
+        $numberOfWeeks = $request->number_of_months * 4;
+
+        $recurringGroupId = 'REC-' . now()->format('ym') . '-' . strtoupper(Str::random(5));
+
+        $generatedDates = [];
+        for ($i = 0; $i < $numberOfWeeks; $i++) {
+            $generatedDates[] = $startDate->copy()->addWeeks($i)->format('Y-m-d');
+        }
+
+        foreach ($generatedDates as $date) {
+            $fullStart = $date . ' ' . $request->start_time . ':00';
+            $fullEnd = $date . ' ' . $request->end_time . ':00';
+
+            $isOverlapped = Booking::where('field_id', $request->field_id)
+                ->where('status', '!=', 'cancelled')
+                ->where(function ($query) use ($fullStart, $fullEnd) {
+                    $query->where('start_time', '<', $fullEnd)
+                        ->where('end_time', '>', $fullStart);
+                })->exists();
+
+            if ($isOverlapped) {
+                $formattedDate = Carbon::parse($date)->format('d/m/Y');
+                return response()->json([
+                    'success' => false,
+                    'message' => "Sự cố trùng lịch vào ngày {$formattedDate}. Vui lòng chọn khung giờ hoặc sân khác!"
+                ], 422);
+            }
+        }
+
+        DB::beginTransaction();
+        try {
+            $userId = $request->user()->id;
+
+            foreach ($generatedDates as $date) {
+                $fullStart = Carbon::parse($date . ' ' . $request->start_time . ':00');
+                $fullEnd = Carbon::parse($date . ' ' . $request->end_time . ':00');
+
+                $hours = $fullStart->diffInMinutes($fullEnd) / 60;
+                $totalAmount = $hours * ($field->price ?? 0);
+                $depositAmount = $totalAmount * 0.30;
+
+                Booking::create([
+                    'user_id'            => $userId,
+                    'field_id'           => $request->field_id,
+                    'booking_date'       => $date,
+                    'recurring_group_id' => $recurringGroupId,
+                    'start_time'         => $request->start_time . ':00',
+                    'end_time'           => $request->end_time . ':00',
+                    'duration'           => $hours * 60,
+                    'total_amount'       => round($totalAmount),
+                    'deposit_amount'     => round($depositAmount),
+                    'status'             => 'pending',
+                    'payment_status'     => 'unpaid',
+                    'customer_name'      => $request->customer_name ?? '',
+                    'customer_phone'     => $request->customer_phone ?? '',
+                    'notes'              => $request->notes ?? null,
+                ]);
+            }
+
+            DB::commit();
+
+            return response()->json([
+                'success'            => true,
+                'message'            => 'Đặt lịch sân định kỳ thành công! Vui lòng thực hiện chuyển khoản cọc.',
+                'recurring_group_id' => $recurringGroupId,
+            ], 201);
+        } catch (\Exception $e) {
+            DB::rollBack();
+            return response()->json([
+                'success' => false,
+                'message' => 'Có lỗi xảy ra trong quá trình thiết lập chuỗi hóa đơn.',
+                'error'   => $e->getMessage()
+            ], 500);
+        }
     }
 }
