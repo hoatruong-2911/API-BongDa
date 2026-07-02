@@ -251,12 +251,15 @@ class FieldController extends Controller
 
     public function getLiveStatus(Request $request): JsonResponse
     {
+        // 🚀 Tự động quét và hủy đơn cọc quá hạn trước khi lấy sơ đồ
+        BookingController::cancelExpiredDeposits();
+
         $date = $request->query('date', now()->toDateString());
-        $fields = \App\Models\Field::all();
+        $fields = Field::all();
 
         // Chỉ lấy những đơn đang chiếm chỗ trên sân
         // Loại bỏ: 'cancelled' (Hủy) và 'completed' (Đã đá xong)
-        $bookings = \App\Models\Booking::with('field')
+        $bookings = Booking::with('field')
             ->whereDate('booking_date', $date)
             ->whereNotIn('status', ['cancelled', 'completed', 'rejected'])
             ->get();

@@ -29,6 +29,8 @@ use App\Http\Controllers\Api\Auth\ForgotPasswordController;
 
 /* --- 1. PUBLIC ROUTES (Ai cũng xem được) --- */
 
+
+
 Route::prefix('auth')->group(function () {
     Route::post('forgot-password', [ForgotPasswordController::class, 'sendOtp']);
     Route::post('reset-password', [ForgotPasswordController::class, 'resetPassword']);
@@ -103,12 +105,13 @@ Route::middleware('auth:sanctum')->group(function () {
 
         //  TUYẾN ROUTE RIÊNG BIỆT: Dành riêng cho phân hệ Staff Panel gọi lên xử lý tạo đơn tại quầy
         Route::post('/staff/bookings/create', [BookingController::class, 'store2']);
-        
+
         // Thêm dòng này vào đầu nhóm role:admin,staff
         // Route::get('fields/live-status', [FieldController::class, 'getLiveStatus']);
         // Route::get('fields/live-status', [FieldController::class, 'getLiveStatus']);
         // Quản lý Booking nâng cao
         Route::patch('bookings/{booking}/status', [BookingController::class, 'changeStatus']);
+        Route::post('/bookings/bulk-delete', [BookingController::class, 'bulkDestroy']);
         Route::apiResource('bookings', BookingController::class)->only(['update', 'destroy']);
 
 

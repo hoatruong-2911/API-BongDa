@@ -12,6 +12,7 @@ use Illuminate\Support\Facades\Hash;
 use Illuminate\Validation\ValidationException;
 use App\Http\Requests\Api\Auth\RegisterRequest; // ⬅️ THÊM
 use App\Http\Requests\Api\Auth\LoginRequest;    // ⬅️ THÊM
+use App\Models\Customer;
 use Illuminate\Support\Facades\DB;
 
 class AuthController extends Controller
@@ -209,9 +210,31 @@ class AuthController extends Controller
         $user = $request->user();
         $user->load('profile');
 
+        $phone = $user->phone ?? ($user->profile ? $user->profile->phone : null);
+        $email = $user->email;
+
+        $customer = null;
+        if ($phone || $email) {
+            $customerQuery = Customer::query();
+            if ($phone) {
+                $customerQuery->where('phone', $phone);
+            }
+            if ($email) {
+                if ($phone) {
+                    $customerQuery->orWhere('email', $email);
+                } else {
+                    $customerQuery->where('email', $email);
+                }
+            }
+            $customer = $customerQuery->first();
+        }
+
+        $userData = $user->toArray();
+        $userData['customer_stats'] = $customer;
+
         return response()->json([
             'success' => true,
-            'data' => $user
+            'data' => $userData
         ]);
     }
 

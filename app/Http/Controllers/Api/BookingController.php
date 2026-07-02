@@ -22,25 +22,52 @@ class BookingController extends Controller
 
     public function index(Request $request): JsonResponse
     {
-        $user = $request->user(); // Lấy thông tin user từ token
+        // 🚀 Tự động quét và hủy đơn cọc quá hạn trước khi truy vấn danh sách
+        self::cancelExpiredDeposits();
 
-        // 1. Nếu là Admin hoặc Staff: Cho phép xem TẤT CẢ
-        if ($user->isAdmin() || $user->isStaff()) {
-            $bookings = Booking::with(['user.profile', 'field'])
-                ->orderBy('created_at', 'desc')
-                ->paginate(7);
-        } else {
-            // 2. Nếu là Khách hàng: CHỈ lấy đơn của chính mình
-            // 🛑 ĐÂY LÀ CHỖ QUAN TRỌNG ĐỂ KHÔNG XEM NHẦM ĐƠN NGƯỜI KHÁC
-            $bookings = Booking::where('user_id', $user->id)
-                ->with(['field'])
-                ->orderBy('created_at', 'desc')
-                ->paginate(7);
+        $user = $request->user(); // Lấy thông tin user từ token
+        $query = Booking::with(['user.profile', 'field']);
+
+        // 1. Phân quyền: Admin/Staff xem tất cả, Khách hàng chỉ xem của chính mình
+        if (!$user->isAdmin() && !$user->isStaff()) {
+            $query->where('user_id', $user->id);
         }
+
+        // 2. Thêm lọc theo trạng thái (status)
+        if ($request->has('status') && $request->status !== 'all') {
+            $query->where('status', $request->status);
+        }
+
+        // 3. Thêm tìm kiếm (search / search text)
+        if ($request->has('search') && $request->search != '') {
+            $search = $request->search;
+            $query->where(function($q) use ($search) {
+                $q->where('customer_name', 'like', "%{$search}%")
+                  ->orWhere('customer_phone', 'like', "%{$search}%")
+                  ->orWhere('id', 'like', "%{$search}%")
+                  ->orWhere('recurring_group_id', 'like', "%{$search}%");
+            });
+        }
+
+        // 4. Lấy số lượng phân trang động per_page (mặc định là 7)
+        $perPage = $request->input('per_page', 7);
+
+        $bookings = $query->orderBy('created_at', 'desc')->paginate($perPage);
+
+        $globalStats = [
+            'total' => Booking::count(),
+            'pending' => Booking::where('status', 'pending')->count(),
+            'approved' => Booking::where('status', 'approved')->count(),
+            'playing' => Booking::where('status', 'playing')->count(),
+            'completed' => Booking::where('status', 'completed')->count(),
+            'cancelled' => Booking::where('status', 'cancelled')->count(),
+            'revenue' => (float) Booking::where('status', 'completed')->sum('total_amount'),
+        ];
 
         return response()->json([
             'success' => true,
-            'data' => $bookings
+            'data' => $bookings,
+            'stats' => $globalStats
         ]);
     }
 
@@ -73,6 +100,20 @@ class BookingController extends Controller
                 ], 422);
             }
 
+            // 2.5 🛑 CHẶN NGOÀI KHUNG GIỜ HOẠT ĐỘNG (04:00 - 23:30) VÀ QUA ĐÊM
+            $startHourStr = $fullStartTime->format('H:i');
+            $endHourStr = $fullEndTime->format('H:i');
+            $startDateStr = $fullStartTime->toDateString();
+            $endDateStr = $fullEndTime->toDateString();
+
+            if ($startDateStr !== $endDateStr || $startHourStr < '04:00' || $startHourStr > '23:30' || $endHourStr < '04:00' || $endHourStr > '23:30') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Khung giờ đặt sân không hợp lệ. Sân chỉ hoạt động từ 04:00 đến 23:30 và không được đặt qua ngày hôm sau.',
+                    'errors' => ['booking' => ['Khung giờ hoạt động từ 04:00 đến 23:30.']]
+                ], 422);
+            }
+
             // 3. Trích xuất dữ liệu
             $bookingDate = $fullStartTime->toDateString();
             $startTimeStr = $fullStartTime->toTimeString();
@@ -87,7 +128,7 @@ class BookingController extends Controller
                             ->where('end_time', '>', $startTimeStr);
                     });
                 })
-                ->whereIn('status', ['pending', 'confirmed', 'playing'])
+                ->whereIn('status', ['pending', 'approved', 'confirmed', 'playing']) // Thêm approved vào đây cho chuẩn chỉ
                 ->exists();
 
             if ($conflict) {
@@ -117,10 +158,28 @@ class BookingController extends Controller
             $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
             $totalAmount = $finalPricePerHour * $durationHours;
 
-            // 🚀 TÍNH TOÁN TIỀN CỌC: Bằng 30% tổng chi phí của buổi đá lẻ
-            $depositAmount = $totalAmount * 0.30;
+            // RÀNG BUỘC CỌC 24 GIỜ:
+            $minutesDiff = $now->diffInMinutes($fullStartTime, false);
+            $paymentType = $request->payment_type ?? 'deposit'; // 'full' or 'deposit'
 
-            // 6. Tạo Booking (Bổ sung lưu thông tin tiền cọc)
+            if ($minutesDiff < 1440) {
+                // Ca đá bắt đầu trong vòng 24h tới bắt buộc trả đủ (100%)
+                $paymentType = 'full';
+            }
+
+            if ($paymentType === 'full') {
+                $status = 'pending'; // 🚀 SỬA THEO YÊU CẦU: Online luôn khởi tạo là pending để Admin duyệt
+                $paymentStatus = 'fully_paid';
+                $depositAmount = 0;
+                $amountPaid = $totalAmount;
+            } else {
+                $status = 'pending'; // 🚀 SỬA THEO YÊU CẦU: Online luôn khởi tạo là pending để Admin duyệt
+                $paymentStatus = 'partial_paid';
+                $depositAmount = $totalAmount * 0.30;
+                $amountPaid = $depositAmount;
+            }
+
+            // 6. Tạo Booking
             $booking = $request->user()->bookings()->create([
                 'field_id'        => $fieldId,
                 'booking_date'    => $bookingDate,
@@ -128,9 +187,10 @@ class BookingController extends Controller
                 'end_time'        => $endTimeStr,
                 'duration'        => $durationMinutes,
                 'total_amount'    => round($totalAmount),
-                'deposit_amount'  => round($depositAmount), // 🚀 BỔ SUNG: Lưu số tiền cọc 30%
-                'status'          => 'pending',
-                'payment_status'  => 'unpaid',              // 🚀 BỔ SUNG: Đơn mới tạo mặc định chưa trả tiền cọc
+                'deposit_amount'  => round($depositAmount),
+                'amount_paid'     => round($amountPaid),
+                'status'          => $status,
+                'payment_status'  => $paymentStatus,
                 'customer_name'   => $request->customer_name,
                 'customer_phone'  => $request->customer_phone,
                 'notes'           => $request->notes,
@@ -267,6 +327,48 @@ class BookingController extends Controller
             $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
             $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
 
+            // 1. Kiểm tra giờ kết thúc sau giờ bắt đầu
+            if ($fullEndTime->lessThanOrEqualTo($fullStartTime)) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Thời gian kết thúc phải sau thời gian bắt đầu.'
+                ], 422);
+            }
+
+            // 2. Chặn ngoài khung giờ hoạt động (04:00 - 23:30) và qua đêm
+            $startHourStr = $fullStartTime->format('H:i');
+            $endHourStr = $fullEndTime->format('H:i');
+            $startDateStr = $fullStartTime->toDateString();
+            $endDateStr = $fullEndTime->toDateString();
+
+            if ($startDateStr !== $endDateStr || $startHourStr < '04:00' || $startHourStr > '23:30' || $endHourStr < '04:00' || $endHourStr > '23:30') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Khung giờ đặt sân không hợp lệ. Sân chỉ hoạt động từ 04:00 đến 23:30 và không được đặt qua ngày hôm sau.'
+                ], 422);
+            }
+
+            // 3. Kiểm tra trùng lịch sân
+            $startTimeStr = $fullStartTime->toTimeString();
+            $endTimeStr = $fullEndTime->toTimeString();
+            $conflict = Booking::where('field_id', $request->field_id)
+                ->whereDate('booking_date', $startDateStr)
+                ->where(function ($query) use ($startTimeStr, $endTimeStr) {
+                    $query->where(function ($q) use ($startTimeStr, $endTimeStr) {
+                        $q->where('start_time', '<', $endTimeStr)
+                            ->where('end_time', '>', $startTimeStr);
+                    });
+                })
+                ->whereIn('status', ['pending', 'approved', 'confirmed', 'playing'])
+                ->exists();
+
+            if ($conflict) {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Sân bóng đã được đặt trong khoảng thời gian này.'
+                ], 422);
+            }
+
             $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
             $durationHours = $durationMinutes / 60;
 
@@ -279,11 +381,21 @@ class BookingController extends Controller
             // Hứng hình thức thanh toán từ Frontend quầy gửi lên (full hoặc deposit)
             $paymentType = $request->payment_type ?? 'full';
 
+            // RÀNG BUỘC CỌC 24 GIỜ: Chỉ cho cọc nếu đặt sân trước ít nhất 24 giờ (1440 phút).
+            $now = Carbon::now($appTimezone);
+            $minutesDiff = $now->diffInMinutes($fullStartTime, false);
+            if ($minutesDiff < 1440 && $paymentType === 'deposit') {
+                return response()->json([
+                    'success' => false,
+                    'message' => 'Không thể đặt cọc cho ca đá bắt đầu trong vòng 24 giờ tới. Bắt buộc thanh toán đủ 100%!'
+                ], 422);
+            }
+
             // 🚀 ĐÃ CẢI TIẾN LOGIC DÒNG TIỀN THEO ĐÚNG KẾ HOẠCH CỦA NÍ:
             if ($paymentType === 'deposit') {
                 $paymentStatus = 'partial_paid';
                 $depositAmount = $totalAmount * 0.30; // Tiền cọc giữ chỗ = 30%
-                $amountPaid    = 0; // 🚀 SỬA LẠI: Trả cọc thì KHÔNG lưu vào cột amount_paid nữa
+                $amountPaid    = $depositAmount;      // 🚀 Ghi nhận thực tế khách đã trả tiền cọc tại quầy
             } else {
                 $paymentStatus = 'fully_paid';
                 $depositAmount = 0;                   // Trả đủ rồi thì khoản nợ cọc về bằng 0
@@ -369,6 +481,9 @@ class BookingController extends Controller
      */
     public function getSchedule(Field $field, Request $request): JsonResponse
     {
+        // 🚀 Tự động quét và hủy đơn cọc quá hạn trước khi kiểm tra lịch trống
+        self::cancelExpiredDeposits();
+
         $request->validate(['date' => 'required|date_format:Y-m-d']);
         $date = $request->date;
         $basePrice = $field->price;
@@ -382,8 +497,8 @@ class BookingController extends Controller
             ->get();
 
         $schedule = [];
-        $operatingStartHour = 8;  // Sân bắt đầu hoạt động lúc 8h
-        $operatingEndHour = 23; // Sân kết thúc hoạt động lúc 23h
+        $operatingStartHour = 4;  // Sân bắt đầu hoạt động lúc 4h
+        $operatingEndHour = 24; // Sinh ca đến hết giờ hoạt động 23h30
         $slotIncrement = 30; // Bước nhảy 30 phút
         $defaultDuration = 90; // Ca mặc định là 90 phút
 
@@ -402,8 +517,8 @@ class BookingController extends Controller
 
                 $slotEnd = $slotStart->copy()->addMinutes($defaultDuration);
 
-                // Không tạo ca nếu giờ kết thúc vượt quá giờ hoạt động
-                if ($slotEnd->hour >= $operatingEndHour && $slotEnd->minute > 0) {
+                // Không tạo ca nếu giờ kết thúc vượt quá giờ hoạt động 23:30 hoặc kéo dài sang ngày hôm sau
+                if ($slotEnd->toDateString() !== $requestedDate->toDateString() || $slotEnd->format('H:i') > '23:30') {
                     continue;
                 }
 
@@ -426,66 +541,7 @@ class BookingController extends Controller
         return response()->json(['success' => true, 'data' => $schedule]);
     }
 
-    /**
-     * Cập nhật thông tin đặt sân (Dành cho Admin).
-     */
-
-    // public function update(Request $request, $id): JsonResponse
-    // {
-    //     try {
-    //         $booking = Booking::findOrFail($id);
-    //         $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
-
-    //         // 🚀 Đã đồng bộ: Nhận chuỗi thời gian an toàn từ Frontend gửi lên
-    //         $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
-    //         $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
-
-    //         $bookingDate = $fullStartTime->toDateString();
-    //         $startTimeStr = $fullStartTime->toTimeString();
-    //         $endTimeStr = $fullEndTime->toTimeString();
-
-    //         // Tính toán lại số phút và số tiền phòng trường hợp Admin sửa giờ đá
-    //         $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
-    //         $durationHours = $durationMinutes / 60;
-
-    //         $field = Field::findOrFail($request->field_id);
-    //         $basePrice = $field->price;
-    //         $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
-    //         $totalAmount = $finalPricePerHour * $durationHours;
-
-    //         // Tự động tính lại hạn mức cọc 30% phòng khi Admin thay đổi khung giờ
-    //         $depositAmount = $totalAmount * 0.30;
-
-    //         // Cập nhật dữ liệu xuống MySQL
-    //         $booking->update([
-    //             'field_id'        => $request->field_id,
-    //             'booking_date'    => $bookingDate,
-    //             'start_time'      => $startTimeStr,
-    //             'end_time'        => $endTimeStr,
-    //             'duration'        => $durationMinutes,
-    //             'total_amount'    => round($totalAmount),
-    //             'deposit_amount'  => round($depositAmount), // 🚀 BỔ SUNG: Lưu tiền cọc cập nhật
-    //             'payment_status'  => $request->payment_status ?? $booking->payment_status, // 🚀 BỔ SUNG: Trạng thái cọc
-    //             'customer_name'   => $request->customer_name,
-    //             'customer_phone'  => $request->customer_phone,
-    //             'notes'           => $request->notes,
-    //             'status'          => $request->status,
-    //             'approved_by'     => $request->approved_by,
-    //             'confirmed_by'    => $request->confirmed_by,
-    //         ]);
-
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => 'Cập nhật đơn đặt sân thành công rực rỡ!',
-    //             'data' => $booking->load('field')
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         return response()->json([
-    //             'success' => false,
-    //             'message' => 'Lỗi hệ thống khi sửa đơn: ' . $e->getMessage()
-    //         ], 500);
-    //     }
-    // }
+    
     public function update(Request $request, $id): JsonResponse
     {
         try {
@@ -493,20 +549,63 @@ class BookingController extends Controller
             $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
 
             // Ép kiểu thời gian an toàn từ chuỗi Full DateTime Frontend gửi lên
-            $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
-            $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
+             $fullStartTime = Carbon::parse($request->start_time, $appTimezone);
+             $fullEndTime = Carbon::parse($request->end_time, $appTimezone);
 
-            $bookingDate = $fullStartTime->toDateString();
-            $startTimeStr = $fullStartTime->toTimeString();
-            $endTimeStr = $fullEndTime->toTimeString();
+             // 1. Kiểm tra giờ kết thúc sau giờ bắt đầu
+             if ($fullEndTime->lessThanOrEqualTo($fullStartTime)) {
+                 return response()->json([
+                     'success' => false,
+                     'message' => 'Thời gian kết thúc phải sau thời gian bắt đầu.'
+                 ], 422);
+             }
 
-            $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
-            $durationHours = $durationMinutes / 60;
+             // 2. Chặn ngoài khung giờ hoạt động (04:00 - 23:30) và qua đêm
+             $startHourStr = $fullStartTime->format('H:i');
+             $endHourStr = $fullEndTime->format('H:i');
+             $startDateStr = $fullStartTime->toDateString();
+             $endDateStr = $fullEndTime->toDateString();
 
-            $field = Field::findOrFail($request->field_id);
-            $basePrice = $field->price;
-            $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
-            $totalAmount = $finalPricePerHour * $durationHours;
+             if ($startDateStr !== $endDateStr || $startHourStr < '04:00' || $startHourStr > '23:30' || $endHourStr < '04:00' || $endHourStr > '23:30') {
+                 return response()->json([
+                     'success' => false,
+                     'message' => 'Khung giờ đặt sân không hợp lệ. Sân chỉ hoạt động từ 04:00 đến 23:30 và không được đặt qua ngày hôm sau.'
+                 ], 422);
+             }
+
+             // 3. Kiểm tra trùng lịch sân (loại trừ chính đơn đang cập nhật)
+             $startTimeStr = $fullStartTime->toTimeString();
+             $endTimeStr = $fullEndTime->toTimeString();
+             $conflict = Booking::where('field_id', $request->field_id)
+                 ->where('id', '!=', $id) // Loại trừ chính đơn đang cập nhật
+                 ->whereDate('booking_date', $startDateStr)
+                 ->where(function ($query) use ($startTimeStr, $endTimeStr) {
+                     $query->where(function ($q) use ($startTimeStr, $endTimeStr) {
+                         $q->where('start_time', '<', $endTimeStr)
+                             ->where('end_time', '>', $startTimeStr);
+                     });
+                 })
+                 ->whereIn('status', ['pending', 'approved', 'confirmed', 'playing'])
+                 ->exists();
+
+             if ($conflict) {
+                 return response()->json([
+                     'success' => false,
+                     'message' => 'Sân bóng đã được đặt trong khoảng thời gian này.'
+                 ], 422);
+             }
+
+             $bookingDate = $fullStartTime->toDateString();
+             $startTimeStr = $fullStartTime->toTimeString();
+             $endTimeStr = $fullEndTime->toTimeString();
+
+             $durationMinutes = $fullStartTime->diffInMinutes($fullEndTime);
+             $durationHours = $durationMinutes / 60;
+
+             $field = Field::findOrFail($request->field_id);
+             $basePrice = $field->price;
+             $finalPricePerHour = ($fullStartTime->hour >= 20) ? ($basePrice * 1.2) : $basePrice;
+             $totalAmount = $finalPricePerHour * $durationHours;
 
             // 🚀 ĐÃ SỬA CHUẨN: Đồng bộ ENUM giá trị dòng tiền của Database
             $paymentStatus = $request->payment_status ?? $booking->payment_status;
@@ -551,79 +650,55 @@ class BookingController extends Controller
     }
 
 
-    /**
-     * Chuyển đổi trạng thái nhanh từ trang danh sách hoặc chi tiết.
-     * Cập nhật thêm staff_id để tính KPI cho nhân viên.
-     */
-    // public function changeStatus(Request $request, Booking $booking): JsonResponse
-    // {
-    //     $newStatus = $request->status;
-    //     $user = $request->user(); // Lấy người đang đăng nhập
 
-    //     // Logic tự động điền Audit Log
-    //     $updateData = ['status' => $newStatus];
-
-    //     if ($newStatus === 'approved') {
-    //         $updateData['approved_by'] = $user->id;
-    //         $updateData['approved_at'] = now();
-    //     }
-
-    //     if ($newStatus === 'playing' || $newStatus === 'completed') {
-    //         $updateData['confirmed_by'] = $user->id;
-    //         if ($newStatus === 'completed') {
-    //             $updateData['confirmed_at'] = now();
-    //         }
-    //     }
-
-    //     try {
-    //         $booking->update($updateData);
-    //         return response()->json([
-    //             'success' => true,
-    //             'message' => "Đã chuyển trạng thái sang: " . strtoupper($newStatus),
-    //             'data' => $booking
-    //         ]);
-    //     } catch (\Exception $e) {
-    //         return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
-    //     }
-    // }
-    /**
-     * Chuyển đổi trạng thái nhanh từ trang danh sách hoặc chi tiết.
-     * Cập nhật thêm staff_id để tính KPI cho nhân viên.
-     */
     public function changeStatus(Request $request, Booking $booking): JsonResponse
     {
-        $newStatus = $request->status;
+        $newStatus = $request->input('status');
+        $newPaymentStatus = $request->input('payment_status');
         $user = $request->user(); // Lấy thông tin Staff/Admin đang thực hiện
+        $updateData = [];
 
-        // 1. ✅ LOGIC CHẶN BẮT ĐẦU SAI NGÀY (Gộp từ changeStatus2 của bro vào cho gọn)
-        if ($newStatus === 'playing') {
-            $today = now()->toDateString();
-            $bookingDate = \Carbon\Carbon::parse($booking->booking_date)->toDateString();
+        if ($newStatus) {
+            $updateData['status'] = $newStatus;
+            $updateData['staff_id'] = $user->id; // Ghi nhận nhân viên xử lý
 
-            if ($today !== $bookingDate) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Không thể bắt đầu! Đơn này đặt cho ngày {$bookingDate}, hôm nay là {$today} ní ơi!"
-                ], 403);
+            // 1. ✅ LOGIC CHẶN BẮT ĐẦU SAI NGÀY
+            if ($newStatus === 'playing') {
+                $today = now()->toDateString();
+                $bookingDate = Carbon::parse($booking->booking_date)->toDateString();
+
+                if ($today !== $bookingDate) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Không thể bắt đầu! Đơn này đặt cho ngày {$bookingDate}, hôm nay là {$today} ní ơi!"
+                    ], 403);
+                }
+            }
+
+            // Tự động điền Audit Log
+            if ($newStatus === 'approved') {
+                $updateData['approved_by'] = $user->id;
+                $updateData['approved_at'] = now();
+            }
+
+            if ($newStatus === 'playing' || $newStatus === 'completed') {
+                $updateData['confirmed_by'] = $user->id;
+                if ($newStatus === 'completed') {
+                    $updateData['confirmed_at'] = now();
+                }
+            }
+
+            // 🚀 CẬP NHẬT TRẠNG THÁI DÒNG TIỀN KHI HOÀN THÀNH
+            if ($newStatus === 'completed') {
+                $updateData['payment_status'] = 'fully_paid';
+                $updateData['amount_paid'] = $booking->total_amount;
             }
         }
 
-        // 2. ✅ CHUẨN BỊ DỮ LIỆU CẬP NHẬT
-        $updateData = [
-            'status'   => $newStatus,
-            'staff_id' => $user->id, // 👈 Ghi nhận nhân viên xử lý vào đây
-        ];
-
-        // Tự động điền Audit Log như cũ của bro
-        if ($newStatus === 'approved') {
-            $updateData['approved_by'] = $user->id;
-            $updateData['approved_at'] = now();
-        }
-
-        if ($newStatus === 'playing' || $newStatus === 'completed') {
-            $updateData['confirmed_by'] = $user->id;
-            if ($newStatus === 'completed') {
-                $updateData['confirmed_at'] = now();
+        if ($newPaymentStatus) {
+            $updateData['payment_status'] = $newPaymentStatus;
+            if ($newPaymentStatus === 'fully_paid') {
+                $updateData['amount_paid'] = $booking->total_amount;
             }
         }
 
@@ -633,11 +708,15 @@ class BookingController extends Controller
 
             return response()->json([
                 'success' => true,
-                'message' => "Đã chuyển trạng thái sang: " . strtoupper($newStatus) . " (Ghi nhận cho nhân viên: {$user->name})",
-                'data' => $booking->load(['field', 'staff']) // Load thêm staff để Frontend hiển thị nếu cần
+                'message' => "Đã cập nhật trạng thái đặt sân thành công (Ghi nhận cho nhân viên: {$user->name})",
+                'data' => $booking->load(['field', 'staff'])
             ]);
         } catch (\Exception $e) {
-            return response()->json(['success' => false, 'message' => $e->getMessage()], 500);
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi cập nhật CSDL: ' . $e->getMessage(),
+                'update_data' => $updateData
+            ], 500);
         }
     }
 
@@ -701,6 +780,9 @@ class BookingController extends Controller
      */
     public function getFieldSchedule(Request $request): JsonResponse
     {
+        // 🚀 Tự động quét và hủy đơn cọc quá hạn trước khi lấy lịch bận
+        self::cancelExpiredDeposits();
+
         $request->validate([
             'field_id' => 'required|exists:fields,id',
             'date'     => 'required|date_format:Y-m-d',
@@ -727,20 +809,47 @@ class BookingController extends Controller
     {
         $newStatus = $request->input('status');
 
-        // ✅ LOGIC CHẶN BẮT ĐẦU SAI NGÀY
-        if ($newStatus === 'playing') {
-            $today = now()->toDateString();
-            $bookingDate = \Carbon\Carbon::parse($booking->booking_date)->toDateString();
+        $newPaymentStatus = $request->input('payment_status');
+        $updateData = [];
 
-            if ($today !== $bookingDate) {
-                return response()->json([
-                    'success' => false,
-                    'message' => "Không thể bắt đầu! Đơn này đặt cho ngày {$bookingDate}, hôm nay là {$today} ní ơi!"
-                ], 403);
+        if ($newStatus) {
+            $updateData['status'] = $newStatus;
+
+            // ✅ LOGIC CHẶN BẮT ĐẦU SAI NGÀY
+            if ($newStatus === 'playing') {
+                $today = now()->toDateString();
+                $bookingDate = \Carbon\Carbon::parse($booking->booking_date)->toDateString();
+
+                if ($today !== $bookingDate) {
+                    return response()->json([
+                        'success' => false,
+                        'message' => "Không thể bắt đầu! Đơn này đặt cho ngày {$bookingDate}, hôm nay là {$today} ní ơi!"
+                    ], 403);
+                }
+            }
+
+            if ($newStatus === 'completed') {
+                $updateData['payment_status'] = 'fully_paid';
+                $updateData['amount_paid'] = $booking->total_amount;
             }
         }
 
-        $booking->update(['status' => $newStatus]);
+        if ($newPaymentStatus) {
+            $updateData['payment_status'] = $newPaymentStatus;
+            if ($newPaymentStatus === 'fully_paid') {
+                $updateData['amount_paid'] = $booking->total_amount;
+            }
+        }
+
+        try {
+            $booking->update($updateData);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi cập nhật CSDL: ' . $e->getMessage(),
+                'update_data' => $updateData
+            ], 500);
+        }
         return response()->json(['success' => true, 'data' => $booking]);
     }
 
@@ -789,7 +898,8 @@ class BookingController extends Controller
         // Cập nhật trạng thái đồng loạt sang "Đã cọc 30%" và "Kích hoạt lịch đã duyệt"
         $bookings->update([
             'payment_status' => 'partial_paid',
-            'status' => 'approved'
+            'status' => 'approved',
+            'amount_paid' => \Illuminate\Support\Facades\DB::raw('deposit_amount')
         ]);
 
         return response()->json([
@@ -805,7 +915,28 @@ class BookingController extends Controller
             'number_of_months' => 'required|in:1,3,6',
             'start_time'       => 'required|date_format:H:i',
             'end_time'         => 'required|date_format:H:i|after:start_time',
+            'payment_type'     => 'nullable|in:full,deposit',
         ]);
+
+        // 🛑 CHẶN NGOÀI KHUNG GIỜ HOẠT ĐỘNG (04:00 - 23:30)
+        if ($request->start_time < '04:00' || $request->start_time > '23:30' || $request->end_time < '04:00' || $request->end_time > '23:30') {
+            return response()->json([
+                'success' => false,
+                'message' => 'Khung giờ đặt sân định kỳ không hợp lệ. Sân chỉ hoạt động từ 04:00 đến 23:30.'
+            ], 422);
+        }
+
+        $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
+        $firstSessionStart = Carbon::parse($request->start_date . ' ' . $request->start_time, $appTimezone);
+        $now = Carbon::now($appTimezone);
+        $minutesDiff = $now->diffInMinutes($firstSessionStart, false);
+
+        if ($minutesDiff < 1440) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Không thể đặt chuỗi lịch định kỳ bắt đầu trong vòng 24 giờ tới. Vui lòng chọn ngày bắt đầu xa hơn!'
+            ], 422);
+        }
 
         $field = Field::find($request->field_id);
         $startDate = Carbon::parse($request->start_date);
@@ -838,9 +969,13 @@ class BookingController extends Controller
             }
         }
 
+        $paymentType = $request->payment_type; // 'full' or 'deposit' or null
+
         DB::beginTransaction();
         try {
             $userId = $request->user()->id;
+            $currentUser = $request->user();
+            $isStaffOrAdmin = $currentUser && ($currentUser->role === 'admin' || $currentUser->role === 'staff');
 
             foreach ($generatedDates as $date) {
                 $fullStart = Carbon::parse($date . ' ' . $request->start_time . ':00');
@@ -848,7 +983,24 @@ class BookingController extends Controller
 
                 $hours = $fullStart->diffInMinutes($fullEnd) / 60;
                 $totalAmount = $hours * ($field->price ?? 0);
+                
+                // Mặc định cho online
+                $paymentStatus = 'unpaid';
+                $status = 'pending';
                 $depositAmount = $totalAmount * 0.30;
+                $amountPaid = 0;
+
+                if ($paymentType === 'deposit') {
+                    $paymentStatus = 'partial_paid';
+                    $status = $isStaffOrAdmin ? 'approved' : 'pending';
+                    $depositAmount = $totalAmount * 0.30;
+                    $amountPaid = $depositAmount;
+                } elseif ($paymentType === 'full') {
+                    $paymentStatus = 'fully_paid';
+                    $status = $isStaffOrAdmin ? 'approved' : 'pending';
+                    $depositAmount = 0;
+                    $amountPaid = $totalAmount;
+                }
 
                 Booking::create([
                     'user_id'            => $userId,
@@ -860,8 +1012,9 @@ class BookingController extends Controller
                     'duration'           => $hours * 60,
                     'total_amount'       => round($totalAmount),
                     'deposit_amount'     => round($depositAmount),
-                    'status'             => 'pending',
-                    'payment_status'     => 'unpaid',
+                    'amount_paid'        => round($amountPaid),
+                    'status'             => $status,
+                    'payment_status'     => $paymentStatus,
                     'customer_name'      => $request->customer_name ?? '',
                     'customer_phone'     => $request->customer_phone ?? '',
                     'notes'              => $request->notes ?? null,
@@ -870,9 +1023,16 @@ class BookingController extends Controller
 
             DB::commit();
 
+            $msg = 'Đặt lịch sân định kỳ thành công!';
+            if ($paymentType === 'deposit' || $paymentType === 'full') {
+                $msg = 'Đặt lịch sân định kỳ tại quầy thành công rực rỡ!';
+            } else {
+                $msg = 'Đặt lịch sân định kỳ thành công! Vui lòng thực hiện chuyển khoản cọc.';
+            }
+
             return response()->json([
                 'success'            => true,
-                'message'            => 'Đặt lịch sân định kỳ thành công! Vui lòng thực hiện chuyển khoản cọc.',
+                'message'            => $msg,
                 'recurring_group_id' => $recurringGroupId,
             ], 201);
         } catch (\Exception $e) {
@@ -881,6 +1041,61 @@ class BookingController extends Controller
                 'success' => false,
                 'message' => 'Có lỗi xảy ra trong quá trình thiết lập chuỗi hóa đơn.',
                 'error'   => $e->getMessage()
+            ], 500);
+        }
+    }
+
+    /**
+     * Tự động quét và hủy đơn đặt sân đã cọc 30% nhưng quá hạn đóng nốt 70% (trước giờ đá 6 tiếng).
+     */
+    public static function cancelExpiredDeposits()
+    {
+        $appTimezone = config('app.timezone', 'Asia/Ho_Chi_Minh');
+        $deadline = Carbon::now($appTimezone)->addHours(6);
+
+        $expiredBookings = Booking::where('payment_status', 'partial_paid')
+            ->whereIn('status', ['pending', 'approved'])
+            ->whereRaw("CONCAT(booking_date, ' ', start_time) < ?", [$deadline->toDateTimeString()])
+            ->get();
+
+        foreach ($expiredBookings as $booking) {
+            $booking->update([
+                'status' => 'cancelled',
+                'notes' => trim(($booking->notes ?? '') . "\n[Hệ thống] Tự động hủy đơn và giữ cọc do không hoàn tất thanh toán 70% còn lại trước giờ đá 6 tiếng.")
+            ]);
+        }
+    }
+
+    /**
+     * Xóa hàng loạt các đơn đặt sân được chọn.
+     */
+    public function bulkDestroy(Request $request): JsonResponse
+    {
+        $user = $request->user();
+        if (!$user->isAdmin() && !$user->isStaff()) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Bạn không có quyền thực hiện hành động này.'
+            ], 403);
+        }
+
+        $request->validate([
+            'ids' => 'required|array',
+            'ids.*' => 'exists:bookings,id'
+        ]);
+
+        $ids = $request->ids;
+
+        try {
+            Booking::whereIn('id', $ids)->delete();
+            return response()->json([
+                'success' => true,
+                'message' => 'Đã xóa hàng loạt các đơn đặt sân được chọn thành công!'
+            ]);
+        } catch (\Exception $e) {
+            return response()->json([
+                'success' => false,
+                'message' => 'Lỗi khi xóa hàng loạt: ' . $e->getMessage()
             ], 500);
         }
     }

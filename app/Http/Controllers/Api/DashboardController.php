@@ -332,6 +332,30 @@ class DashboardController extends Controller
                 $tempStart->addDay();
             }
 
+            // --- 6. Chi tiết doanh thu từng sân bóng (Field Revenue Data) ---
+            $fieldRevenueData = \Illuminate\Support\Facades\DB::table('fields')
+                ->leftJoin('bookings', function($join) use ($startDate, $endDate) {
+                    $join->on('fields.id', '=', 'bookings.field_id')
+                         ->whereBetween('bookings.booking_date', [$startDate, $endDate]);
+                })
+                ->select(
+                    'fields.id as field_id',
+                    'fields.name as field_name',
+                    \Illuminate\Support\Facades\DB::raw('COUNT(bookings.id) as total_bookings'),
+                    \Illuminate\Support\Facades\DB::raw('SUM(CASE WHEN bookings.id IS NOT NULL THEN bookings.duration ELSE 0 END) as total_duration_minutes'),
+                    \Illuminate\Support\Facades\DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END) as revenue')
+                )
+                ->groupBy('fields.id', 'fields.name')
+                ->orderBy(\Illuminate\Support\Facades\DB::raw('SUM(CASE WHEN bookings.status = "completed" THEN bookings.total_amount ELSE 0 END)'), 'desc')
+                ->get()
+                ->map(fn($f) => [
+                    'field_id' => $f->field_id,
+                    'field_name' => $f->field_name,
+                    'total_bookings' => (int)$f->total_bookings,
+                    'total_duration' => (float)$f->total_duration_minutes,
+                    'revenue' => (float)$f->revenue
+                ]);
+
             return response()->json([
                 'success' => true,
                 'totalRevenue' => $totalBookingRev + $totalOrderRev,
@@ -340,7 +364,8 @@ class DashboardController extends Controller
                 'dailyData' => $dailyData,
                 'categoryData' => $categoryData,
                 'topProducts' => $topProducts,
-                'topCustomers' => $topCustomers
+                'topCustomers' => $topCustomers,
+                'fieldRevenueData' => $fieldRevenueData
             ]);
         } catch (\Exception $e) {
             return response()->json([
