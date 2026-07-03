@@ -11,3 +11,7 @@ Artisan::command('inspire', function () {
 
 
 Schedule::command('bookings:cancel-expired-deposits')->everyFiveMinutes();
+
+Schedule::call(function () {
+    \App\Http\Controllers\Api\OrderController::cancelExpiredOrders();
+})->everyFiveMinutes();

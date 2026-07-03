@@ -22,6 +22,7 @@ class StoreOrderRequest extends FormRequest
             'payment_method' => 'required|in:qr,cash',
             'total_amount'   => 'required|numeric|min:0',
             'notes'          => 'nullable|string',
+            'pickup_time'    => 'nullable|string',
             'items'          => 'required|array|min:1',
             'items.*.id'     => 'required|exists:products,id',
             'items.*.name'   => 'required|string',

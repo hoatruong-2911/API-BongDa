@@ -23,6 +23,7 @@ class Order extends Model
         'order_type',
         'payment_method',
         'notes',
+        'pickup_time',
     ];
 
     protected $guarded = [];

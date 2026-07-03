@@ -17,9 +17,41 @@ use App\Models\Product; // Nhớ import Model Product
 
 class OrderController extends Controller
 {
+    public static function cancelExpiredOrders(): void
+    {
+        $expiredTime = now()->addHour();
+
+        $expiredOrders = Order::with('items')
+            ->whereIn('status', ['pending', 'confirmed'])
+            ->whereNotNull('pickup_time')
+            ->where('pickup_time', '<=', $expiredTime)
+            ->get();
+
+        foreach ($expiredOrders as $order) {
+            DB::transaction(function () use ($order) {
+                foreach ($order->items as $item) {
+                    Product::where('id', $item->product_id)->increment('stock', $item->quantity);
+                }
+
+                $order->status = 'cancelled';
+                $order->notes = trim(($order->notes ? $order->notes . "\n" : "") . "[Hệ thống tự động hủy lúc " . now()->format('H:i d/m/Y') . " do chưa thanh toán/đến lấy trước giờ hẹn lấy 1 tiếng (Hẹn lấy: " . \Carbon\Carbon::parse($order->pickup_time)->format('H:i d/m/Y') . ")]");
+                $order->save();
+
+                Notification::create([
+                    'type'    => 'order_cancelled',
+                    'title'   => 'ĐƠN HÀNG TỰ ĐỘNG HỦY!',
+                    'message' => "Hóa đơn #{$order->order_code} bị hủy tự động trước giờ hẹn lấy 1 tiếng...",
+                    'link'    => '/staff/orders',
+                    'is_read' => false
+                ]);
+            });
+        }
+    }
 
     public function index(Request $request): JsonResponse
     {
+        self::cancelExpiredOrders();
+
         /** @var \App\Models\User $user */ // 🛑 THÊM DÒNG NÀY ĐỂ MÁY HIỂU BIẾN $user CÓ HÀM isAdmin
         $user = auth('sanctum')->user(); // Lấy cả object user để check role
 
@@ -44,6 +76,8 @@ class OrderController extends Controller
 
     public function indexAdmin(Request $request): JsonResponse
     {
+        self::cancelExpiredOrders();
+
         // Load cả items và user để Admin biết đơn của ai
         $orders = Order::with(['items', 'user'])
             ->orderBy('created_at', 'desc')
@@ -192,6 +226,8 @@ class OrderController extends Controller
     // }
     public function store(StoreOrderRequest $request): JsonResponse
     {
+        self::cancelExpiredOrders();
+
         return DB::transaction(function () use ($request) {
         // ✅ ĐẶT COMMENT TẠI ĐÂY (Bên trong Closure) để máy nhận diện đúng
             /** @var \App\Models\User $user */
@@ -219,6 +255,7 @@ class OrderController extends Controller
                 'status'         => $initialStatus,
                 'order_type'     => $staffId ? 'counter' : 'online',
                 'notes'          => $request->notes,
+                'pickup_time'    => $request->pickup_time,
                 'pickup_address' => 'Sân bóng Thanh Hóa Soccer, Ninh Thuận',
             ]);
             // ✅ THÊM LOGIC BẮN THÔNG BÁO TẠI ĐÂY

@@ -22,6 +22,20 @@ use App\Http\Controllers\Api\{
     NotificationController,
     PaymentWebhookController
 };
+use Illuminate\Support\Facades\Schema;
+use Illuminate\Database\Schema\Blueprint;
+
+// Tự động tạo cột pickup_time nếu chưa có
+try {
+    if (Schema::hasTable('orders') && !Schema::hasColumn('orders', 'pickup_time')) {
+        Schema::table('orders', function (Blueprint $table) {
+            $table->dateTime('pickup_time')->nullable()->after('pickup_address');
+        });
+    }
+} catch (\Exception $e) {
+    // Bỏ qua nếu đã có hoặc lỗi
+}
+
 use App\Models\Category;
 use App\Models\Department;
 use App\Http\Controllers\Api\Auth\ForgotPasswordController;
